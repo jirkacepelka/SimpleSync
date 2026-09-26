@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"fmt"
+	"html"
 	"html/template"
 	"net/http"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -74,6 +76,10 @@ type site struct {
 	hashes map[string]string
 	ix     *fileIndex // every file of the vault, to resolve links
 	order  []string
+
+	excerpts  map[string]string   // first sentences, for the front page cards
+	words     map[string]int      // word count, for the reading time
+	backlinks map[string][]string // published notes linking to a note
 }
 
 func noteURL(slug, fp string) string {
@@ -118,7 +124,8 @@ func (w *Web) buildSite(ctx context.Context, pub store.Publish, v *store.Vault) 
 		return nil, err
 	}
 	s := &site{key: key, pub: pub, notes: map[string]bool{}, attach: map[string]bool{},
-		titles: map[string]string{}, mtimes: map[string]int64{}, hashes: map[string]string{}, ix: filesIndex(files, nil)}
+		titles: map[string]string{}, mtimes: map[string]int64{}, hashes: map[string]string{}, ix: filesIndex(files, nil),
+		excerpts: map[string]string{}, words: map[string]int{}, backlinks: map[string][]string{}}
 	texts := map[string]string{}
 	for _, f := range files {
 		if f.Deleted || hiddenPath(f.Path) {
@@ -142,16 +149,29 @@ func (w *Web) buildSite(ctx context.Context, pub store.Publish, v *store.Vault) 
 		}
 		s.notes[f.Path] = true
 		texts[f.Path] = text
+		_, body := markdown.SplitFrontmatter([]byte(text))
+		s.excerpts[f.Path] = excerpt(string(body))
+		s.words[f.Path] = len(strings.Fields(string(body)))
 		title := fm.Get("title")
 		if title == "" {
 			title = strings.TrimSuffix(path.Base(f.Path), path.Ext(f.Path))
 		}
 		s.titles[f.Path] = title
 	}
-	// Files referenced from published notes become public too.
+	// Files referenced from published notes become public too, and links
+	// between published notes become backlinks.
 	for fp, text := range texts {
+		seen := map[string]bool{}
 		record := func(t string) (string, bool) {
-			if p, _, ok := s.ix.resolve(fp, t); ok && !s.notes[p] && !strings.EqualFold(path.Ext(p), ".md") {
+			p, _, ok := s.ix.resolve(fp, t)
+			switch {
+			case !ok:
+			case s.notes[p]:
+				if p != fp && !seen[p] {
+					seen[p] = true
+					s.backlinks[p] = append(s.backlinks[p], fp)
+				}
+			case !strings.EqualFold(path.Ext(p), ".md"):
 				s.attach[p] = true
 			}
 			return "", false
@@ -162,6 +182,9 @@ func (w *Web) buildSite(ctx context.Context, pub store.Publish, v *store.Vault) 
 		s.order = append(s.order, fp)
 	}
 	sort.Slice(s.order, func(i, j int) bool { return strings.ToLower(s.order[i]) < strings.ToLower(s.order[j]) })
+	for _, bl := range s.backlinks {
+		sort.Slice(bl, func(i, j int) bool { return strings.ToLower(bl[i]) < strings.ToLower(bl[j]) })
+	}
 	w.sites.Store(v.ID, s)
 	return s, nil
 }
@@ -225,18 +248,89 @@ func (s *site) nav(current string) []*navItem {
 }
 
 type publicPage struct {
-	Lang     string
-	Site     string
-	SiteURL  string
-	Title    string
-	Content  template.HTML
-	Updated  string
-	Nav      []*navItem
-	Index    []*navItem
-	NotFound bool
-	// OwnHeading: the note starts with an H1, so the page title is not repeated.
-	OwnHeading bool
-	T          func(string, ...any) string
+	Lang      string
+	Site      string
+	Initial   string // first letter of the site name, for the logo mark
+	SiteURL   string
+	Title     string        // plain text, for <title>
+	TitleHTML template.HTML // the note's own H1 (may contain inline markup)
+	Crumbs    []string
+	Content   template.HTML
+	Updated   string
+	Minutes   int
+	Excerpt   string
+	Nav       []*navItem
+	TOC       []tocItem
+	Backlinks []*card
+	Prev      *card
+	Next      *card
+	Cards     []*card // front page without a chosen note
+	NotFound  bool
+	T         func(string, ...any) string
+}
+
+type card struct {
+	Title, URL, Folder, Excerpt string
+}
+
+type tocItem struct {
+	Sub      bool
+	ID, Text string
+}
+
+func (s *site) card(fp string) *card {
+	d := path.Dir(fp)
+	if d == "." {
+		d = ""
+	}
+	return &card{Title: s.titles[fp], URL: noteURL(s.pub.Slug, fp), Folder: d, Excerpt: s.excerpts[fp]}
+}
+
+var (
+	leadingH1 = regexp.MustCompile(`^\s*<h1[^>]*>(.*?)</h1>\s*`)
+	headingRe = regexp.MustCompile(`<h([23]) id="([^"]+)">(.*?)</h[23]>`)
+	tagRe     = regexp.MustCompile(`<[^>]+>`)
+	mdNoise   = regexp.MustCompile("!?\\[\\[([^\\]|]*\\|)?([^\\]]*)\\]\\]|!?\\[([^\\]]*)\\]\\([^)]*\\)|[*_=~`#>]+")
+)
+
+func plain(h string) string {
+	return strings.TrimSpace(html.UnescapeString(tagRe.ReplaceAllString(h, "")))
+}
+
+// excerpt returns the first lines of prose of a note, without Markdown.
+func excerpt(body string) string {
+	var out []string
+	n := 0
+	for _, line := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "![") || strings.HasPrefix(t, "|") || strings.HasPrefix(t, "---") || strings.HasPrefix(t, "```") || strings.HasPrefix(t, "> [!") {
+			if n > 0 && t == "" {
+				break
+			}
+			continue
+		}
+		t = strings.TrimLeft(t, "-*+0123456789. []xX")
+		t = mdNoise.ReplaceAllStringFunc(t, func(m string) string {
+			sub := mdNoise.FindStringSubmatch(m)
+			switch {
+			case sub[2] != "":
+				return sub[2]
+			case sub[3] != "":
+				return sub[3]
+			}
+			return ""
+		})
+		out = append(out, strings.TrimSpace(t))
+		n += len(t)
+		if n > 180 {
+			break
+		}
+	}
+	e := strings.Join(out, " ")
+	if r := []rune(e); len(r) > 180 {
+		e = strings.TrimSpace(string(r[:180])) + "…"
+	}
+	return e
 }
 
 func (w *Web) publicPage(rw http.ResponseWriter, r *http.Request) {
@@ -275,11 +369,7 @@ func (w *Web) publicPage(rw http.ResponseWriter, r *http.Request) {
 		pp.Title = pp.Site
 		pp.Nav = s.nav("")
 		for _, fp := range s.order {
-			name := strings.TrimSuffix(fp, ".md")
-			if t := s.titles[fp]; t != path.Base(name) {
-				name = t
-			}
-			pp.Index = append(pp.Index, &navItem{Name: name, URL: noteURL(pub.Slug, fp)})
+			pp.Cards = append(pp.Cards, s.card(fp))
 		}
 		w.renderPublic(rw, http.StatusOK, pp)
 		return
@@ -304,11 +394,42 @@ func (w *Web) publicPage(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "internal error", 500)
 		return
 	}
+	body := res.HTML // produced by the sanitizing renderer
 	pp.Title = s.titles[fp]
-	// A note that opens with its own heading doesn't need a second one.
-	pp.OwnHeading = strings.HasPrefix(strings.TrimSpace(res.HTML), "<h1")
-	pp.Content = template.HTML(res.HTML) // produced by the sanitizing renderer
+	pp.TitleHTML = template.HTML(template.HTMLEscapeString(pp.Title))
+	// A note that opens with its own heading uses it as the page title.
+	if m := leadingH1.FindStringSubmatch(body); m != nil {
+		pp.TitleHTML = template.HTML(m[1])
+		pp.Title = plain(m[1])
+		body = body[len(m[0]):]
+	}
+	for _, m := range headingRe.FindAllStringSubmatch(body, -1) {
+		pp.TOC = append(pp.TOC, tocItem{Sub: m[1] == "3", ID: m[2], Text: plain(m[3])})
+	}
+	if len(pp.TOC) < 2 {
+		pp.TOC = nil
+	}
+	pp.Content = template.HTML(body)
+	pp.Excerpt = s.excerpts[fp]
 	pp.Updated = time.UnixMilli(s.mtimes[fp]).Local().Format(i18n.T(lang, "fmt.date"))
+	pp.Minutes = max(1, (s.words[fp]+199)/200)
+	if d := path.Dir(fp); d != "." {
+		pp.Crumbs = strings.Split(d, "/")
+	}
+	for _, b := range s.backlinks[fp] {
+		pp.Backlinks = append(pp.Backlinks, s.card(b))
+	}
+	for i, o := range s.order {
+		if o != fp {
+			continue
+		}
+		if i > 0 {
+			pp.Prev = s.card(s.order[i-1])
+		}
+		if i+1 < len(s.order) {
+			pp.Next = s.card(s.order[i+1])
+		}
+	}
 	pp.Nav = s.nav(fp)
 	w.renderPublic(rw, http.StatusOK, pp)
 }
@@ -326,6 +447,14 @@ func setPublicHeaders(rw http.ResponseWriter) {
 }
 
 func (w *Web) renderPublic(rw http.ResponseWriter, status int, pp *publicPage) {
+	if pp.Site == "" {
+		pp.Site = "SimpleSync"
+	}
+	pp.Initial = "S"
+	for _, r := range pp.Site {
+		pp.Initial = strings.ToUpper(string(r))
+		break
+	}
 	setPublicHeaders(rw)
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(status)

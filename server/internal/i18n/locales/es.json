@@ -312,5 +312,11 @@
   "public.empty": "Aún no hay nada publicado.",
   "err.invalidSlug": "Usa de 3 a 50 letras minúsculas, cifras y guiones.",
   "err.slugTaken": "Otra bóveda ya usa esa dirección.",
-  "err.invalidPath": "Esa ruta no es válida."
+  "err.invalidPath": "Esa ruta no es válida.",
+  "public.onThisPage": "En esta página",
+  "public.linkedFrom": "Enlazado desde",
+  "public.previous": "Anterior",
+  "public.next": "Siguiente",
+  "public.minRead": "%d min de lectura",
+  "public.noteCount": "%d notas"
 }

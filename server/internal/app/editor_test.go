@@ -267,6 +267,9 @@ func TestPublishing(t *testing.T) {
 	if strings.Contains(body, "publish: true") {
 		t.Fatal("front matter shown on the published page")
 	}
+	if !strings.Contains(body, "Linked from") || !strings.Contains(body, `class="pub-card" href="/p/garden/Home"`) {
+		t.Fatalf("backlink from the published home note missing: %s", body)
+	}
 	for p, want := range map[string]int{"/p/garden/bed.png": 200, "/p/garden/hidden.png": 404, "/p/garden/Private%20diary": 404, "/p/garden/Private%20diary.md": 404, "/p/nope/": 404} {
 		if st, _ := get(p); st != want {
 			t.Errorf("GET %s: %d, want %d", p, st, want)

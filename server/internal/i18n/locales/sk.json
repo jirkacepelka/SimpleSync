@@ -312,5 +312,11 @@
   "public.empty": "Zatiaľ nie je nič publikované.",
   "err.invalidSlug": "Použi 3–50 malých písmen, číslic a pomlčiek.",
   "err.slugTaken": "Túto adresu už používa iný vault.",
-  "err.invalidPath": "Táto cesta nie je platná."
+  "err.invalidPath": "Táto cesta nie je platná.",
+  "public.onThisPage": "Na tejto stránke",
+  "public.linkedFrom": "Odkazujú sem",
+  "public.previous": "Predchádzajúca",
+  "public.next": "Ďalšia",
+  "public.minRead": "%d min čítania",
+  "public.noteCount": "Poznámok: %d"
 }

@@ -312,5 +312,11 @@
   "public.empty": "Non è ancora pubblicato nulla.",
   "err.invalidSlug": "Usa da 3 a 50 lettere minuscole, cifre e trattini.",
   "err.slugTaken": "Questo indirizzo è già usato da un altro vault.",
-  "err.invalidPath": "Questo percorso non è valido."
+  "err.invalidPath": "Questo percorso non è valido.",
+  "public.onThisPage": "In questa pagina",
+  "public.linkedFrom": "Citato in",
+  "public.previous": "Precedente",
+  "public.next": "Successiva",
+  "public.minRead": "%d min di lettura",
+  "public.noteCount": "%d note"
 }

@@ -312,5 +312,11 @@
   "public.empty": "Nothing is published yet.",
   "err.invalidSlug": "Use 3–50 lowercase letters, digits and dashes.",
   "err.slugTaken": "That address is already used by another vault.",
-  "err.invalidPath": "That path isn't valid."
+  "err.invalidPath": "That path isn't valid.",
+  "public.onThisPage": "On this page",
+  "public.linkedFrom": "Linked from",
+  "public.previous": "Previous",
+  "public.next": "Next",
+  "public.minRead": "%d min read",
+  "public.noteCount": "%d notes"
 }

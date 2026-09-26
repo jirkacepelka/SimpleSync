@@ -312,5 +312,11 @@
   "public.empty": "Nic nie zostało jeszcze opublikowane.",
   "err.invalidSlug": "Użyj 3–50 małych liter, cyfr i myślników.",
   "err.slugTaken": "Ten adres jest już używany przez inny sejf.",
-  "err.invalidPath": "Ta ścieżka jest nieprawidłowa."
+  "err.invalidPath": "Ta ścieżka jest nieprawidłowa.",
+  "public.onThisPage": "Na tej stronie",
+  "public.linkedFrom": "Linkują tutaj",
+  "public.previous": "Poprzednia",
+  "public.next": "Następna",
+  "public.minRead": "%d min czytania",
+  "public.noteCount": "Notatki: %d"
 }
