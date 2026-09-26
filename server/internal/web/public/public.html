@@ -1,0 +1,32 @@
+{{define "navlist"}}<ul>{{range .}}<li>{{if .URL}}<a href="{{.URL}}"{{if .Active}} class="on" aria-current="page"{{end}}>{{.Name}}</a>{{else}}<details{{if .Open}} open{{end}}><summary>{{.Name}}</summary>{{template "navlist" .Children}}</details>{{end}}</li>{{end}}</ul>{{end}}
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if and .Title (ne .Title .Site)}}{{.Title}} · {{end}}{{.Site}}</title>
+<link rel="stylesheet" href="/static/style.css">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:site_name" content="{{.Site}}">
+</head>
+<body class="pub">
+<div class="pub-wrap">
+  <aside class="pub-side">
+    {{if .SiteURL}}<a class="pub-site" href="{{.SiteURL}}">{{.Site}}</a>{{end}}
+    {{with .Nav}}
+    <nav class="pub-nav" aria-label="{{call $.T "public.contents"}}">{{template "navlist" .}}</nav>
+    <details class="pub-menu"><summary>{{call $.T "public.contents"}}</summary><nav class="pub-nav">{{template "navlist" .}}</nav></details>
+    {{end}}
+  </aside>
+  <main class="pub-main">
+    <article class="pub-article">
+      {{if not .OwnHeading}}<h1 class="pub-title">{{.Title}}</h1>{{end}}
+      {{if .NotFound}}<div class="md"><p>{{call $.T "public.notFoundHint"}}</p>{{if .SiteURL}}<p><a href="{{.SiteURL}}">← {{.Site}}</a></p>{{end}}</div>{{end}}
+      {{if .Content}}<div class="md">{{.Content}}</div>{{end}}
+      {{with .Index}}<ul class="pub-index">{{range .}}<li><a href="{{.URL}}">{{.Name}}</a></li>{{end}}</ul>{{else}}{{if and (not .Content) (not .NotFound)}}<p class="muted">{{call $.T "public.empty"}}</p>{{end}}{{end}}
+      <footer class="pub-foot">{{if .Updated}}{{call $.T "public.updated" .Updated}} · {{end}}{{call $.T "public.poweredBy"}} <a href="https://github.com/jirkacepelka/SimpleSync">SimpleSync</a></footer>
+    </article>
+  </main>
+</div>
+</body>
+</html>

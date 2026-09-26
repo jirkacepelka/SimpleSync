@@ -108,6 +108,15 @@ CREATE TABLE IF NOT EXISTS backup_files (
 	PRIMARY KEY (backup_id, path)
 );
 CREATE INDEX IF NOT EXISTS backup_files_hash ON backup_files(hash);
+CREATE TABLE IF NOT EXISTS vault_publish (
+	vault_id INTEGER PRIMARY KEY REFERENCES vaults(id) ON DELETE CASCADE,
+	enabled  INTEGER NOT NULL DEFAULT 0,
+	slug     TEXT NOT NULL UNIQUE COLLATE NOCASE,
+	title    TEXT NOT NULL DEFAULT '',
+	mode     TEXT NOT NULL DEFAULT 'marked',
+	folder   TEXT NOT NULL DEFAULT '',
+	home     TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL

@@ -252,13 +252,13 @@ func formIntQuery(r *http.Request, key string) int64 {
 func (w *Web) serveBlob(rw http.ResponseWriter, r *http.Request, hash, name string) {
 	f, err := w.Blobs.Open(hash)
 	if err != nil {
-		w.fail(rw, r, http.StatusNotFound, "Obsah nenalezen.")
+		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return
 	}
 	defer f.Close()
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
 	rw.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
-	if r.URL.Query().Get("inline") == "1" && isImageName(name) {
+	if r.URL.Query().Get("inline") == "1" && (isImageName(name) || strings.EqualFold(path.Ext(name), ".svg")) {
 		rw.Header().Set("Content-Type", mime.TypeByExtension(path.Ext(name)))
 	} else {
 		rw.Header().Set("Content-Type", "application/octet-stream")
@@ -270,7 +270,7 @@ func (w *Web) serveBlob(rw http.ResponseWriter, r *http.Request, hash, name stri
 func (w *Web) versionRaw(rw http.ResponseWriter, r *http.Request, p *page) {
 	v, err := w.Store.Version(r.Context(), p.Vault.ID, formIntPath(r, "vid"))
 	if err != nil || v.Deleted {
-		w.fail(rw, r, http.StatusNotFound, "Verze nenalezena.")
+		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return
 	}
 	w.serveBlob(rw, r, v.Hash, v.Path)
@@ -298,7 +298,7 @@ func (w *Web) commitForce(r *http.Request, p *page, e store.FileEntry) error {
 func (w *Web) versionRestore(rw http.ResponseWriter, r *http.Request, p *page) {
 	v, err := w.Store.Version(r.Context(), p.Vault.ID, formIntPath(r, "vid"))
 	if err != nil || v.Deleted {
-		w.fail(rw, r, http.StatusNotFound, "Verze nenalezena.")
+		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return
 	}
 	back := "/vaults/" + r.PathValue("id") + "/file?path=" + url.QueryEscape(v.Path)
@@ -384,6 +384,16 @@ func (w *Web) memberRemove(rw http.ResponseWriter, r *http.Request, p *page) {
 
 func (w *Web) vaultSettings(rw http.ResponseWriter, r *http.Request, p *page) {
 	p.Title, p.Tab = p.Vault.Name+" – "+w.tr(r, "tab.settings"), "settings"
+	pub, _ := w.Store.PublishOf(r.Context(), p.Vault.ID)
+	slug := pub.Slug
+	if slug == "" {
+		slug = suggestSlug(p.Vault.Name)
+	}
+	scheme := "http"
+	if secure(r) {
+		scheme = "https"
+	}
+	p.D = map[string]any{"Publish": pub, "Slug": slug, "Origin": scheme + "://" + r.Host}
 	w.render(rw, r, "vault_settings", p)
 }
 

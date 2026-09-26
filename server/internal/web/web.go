@@ -23,7 +23,7 @@ import (
 	"github.com/jirkacepelka/obsisync/server/internal/store"
 )
 
-//go:embed templates/*.html static/*
+//go:embed templates/*.html static/* public/*.html
 var assets embed.FS
 
 const sessionCookie = "obsisync_session"
@@ -41,7 +41,9 @@ type Web struct {
 	// styles.css) offered for download; may be empty.
 	PluginDir string
 
-	pages map[string]*template.Template
+	pages  map[string]*template.Template
+	public *template.Template
+	sites  siteCache // vault id → *site
 }
 
 // page is the data passed to every template.
@@ -59,6 +61,7 @@ type page struct {
 	Lang    string
 	Path    string // current URL, for the language switcher
 	Bundle  bool   // the plugin is available, so vaults can be downloaded for Obsidian
+	Wide    bool   // full-width layout (the editor)
 	D       map[string]any
 }
 
@@ -83,6 +86,17 @@ func (w *Web) Register(mux *http.ServeMux) error {
 
 	mux.HandleFunc("GET /vaults/{id}", w.vault(store.RoleViewer, w.vaultFiles))
 	mux.HandleFunc("GET /vaults/{id}/file", w.vault(store.RoleViewer, w.fileHistory))
+	mux.HandleFunc("GET /vaults/{id}/notes", w.vault(store.RoleViewer, w.editor))
+	mux.HandleFunc("GET /vaults/{id}/raw", w.vault(store.RoleViewer, w.raw))
+	mux.HandleFunc("GET /vaults/{id}/api/tree", w.vault(store.RoleViewer, w.apiTree))
+	mux.HandleFunc("GET /vaults/{id}/api/note", w.vault(store.RoleViewer, w.apiNote))
+	mux.HandleFunc("POST /vaults/{id}/api/render", w.vault(store.RoleViewer, w.apiRender))
+	mux.HandleFunc("POST /vaults/{id}/api/save", w.vault(store.RoleEditor, w.apiSave))
+	mux.HandleFunc("POST /vaults/{id}/api/rename", w.vault(store.RoleEditor, w.apiRename))
+	mux.HandleFunc("POST /vaults/{id}/api/delete", w.vault(store.RoleEditor, w.apiDelete))
+	mux.HandleFunc("POST /vaults/{id}/api/upload", w.vault(store.RoleEditor, w.apiUpload))
+	mux.HandleFunc("POST /vaults/{id}/publish", w.vault(store.RoleOwner, w.publishSave))
+	mux.HandleFunc("GET /p/{slug}/{path...}", w.publicPage)
 	mux.HandleFunc("GET /vaults/{id}/version/{vid}", w.vault(store.RoleViewer, w.versionRaw))
 	mux.HandleFunc("POST /vaults/{id}/version/{vid}/restore", w.vault(store.RoleEditor, w.versionRestore))
 	mux.HandleFunc("GET /vaults/{id}/trash", w.vault(store.RoleViewer, w.trash))
@@ -226,15 +240,20 @@ func (w *Web) parseTemplates() error {
 	}
 	for _, f := range files {
 		name := strings.TrimSuffix(path.Base(f), ".html")
-		if name == "layout" || name == "partials" {
+		if name == "layout" || name == "partials" || name == "icons" {
 			continue
 		}
-		t, err := template.New("layout.html").Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/partials.html", f)
+		t, err := template.New("layout.html").Funcs(funcs).ParseFS(assets, "templates/layout.html", "templates/partials.html", "templates/icons.html", f)
 		if err != nil {
 			return fmt.Errorf("template %s: %w", name, err)
 		}
 		w.pages[name] = t
 	}
+	pub, err := template.New("public.html").Funcs(funcs).ParseFS(assets, "public/public.html")
+	if err != nil {
+		return fmt.Errorf("template public: %w", err)
+	}
+	w.public = pub
 	return nil
 }
 
@@ -338,12 +357,21 @@ func (w *Web) user(h handler) http.HandlerFunc {
 			http.Redirect(rw, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 			return
 		}
-		if r.Method == http.MethodPost && subtle.ConstantTimeCompare([]byte(r.FormValue("_csrf")), []byte(s.csrf)) != 1 {
+		if r.Method == http.MethodPost && subtle.ConstantTimeCompare([]byte(csrfToken(r)), []byte(s.csrf)) != 1 {
 			w.fail(rw, r, http.StatusForbidden, w.tr(r, "msg.csrf"))
 			return
 		}
 		h(rw, r, &page{User: s.user, CSRF: s.csrf})
 	}
+}
+
+// csrfToken reads the token from a form field or, for the editor's JSON
+// requests, from the X-CSRF-Token header.
+func csrfToken(r *http.Request) string {
+	if t := r.Header.Get("X-CSRF-Token"); t != "" {
+		return t
+	}
+	return r.FormValue("_csrf")
 }
 
 func (w *Web) admin(h handler) http.HandlerFunc {

@@ -9,7 +9,7 @@
   <tr>
     <td><b>{{.Name}}</b></td>
     {{if $.User.IsAdmin}}<td>{{.Username}}</td>{{end}}
-    <td>{{if index $online .ID}}<span class="badge good">online</span>{{else}}<span class="muted">offline</span>{{end}}</td>
+    <td>{{if index $online .ID}}<span class="badge good"><span class="dot on"></span>online</span>{{else}}<span class="badge"><span class="dot"></span>offline</span>{{end}}</td>
     <td>{{$.Ago .LastSeen}}</td>
     <td>{{$.Date .CreatedAt}}</td>
     <td><form method="post" action="/devices/{{.ID}}/delete" data-confirm="{{$.T "devices.logoutConfirm" .Name}}"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small danger">{{$.T "nav.logout"}}</button></form></td>

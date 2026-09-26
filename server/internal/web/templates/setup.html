@@ -1,6 +1,6 @@
 {{define "content"}}
 <div class="card narrow">
-  <h1>{{$.T "setup.heading"}} 👋</h1>
+  <h1>{{$.T "setup.heading"}}</h1>
   <p>{{$.T "setup.intro"}}</p>
   <form method="post" action="/setup">
     <label>{{$.T "field.username"}} <input name="username" required autofocus autocomplete="username" value="{{index .D "Username"}}" pattern="[A-Za-z0-9._@\-]{2,64}"></label>

@@ -1,7 +1,10 @@
 {{define "content"}}
 {{template "vaultnav" .}}
 {{$v := .Vault}}{{$sel := index .D "Sel"}}{{$cur := index .D "Current"}}
-<div class="crumbs"><a href="/vaults/{{$v.ID}}?dir={{q (index .D "Dir")}}">← {{$.T "file.back"}}</a></div>
+<div class="row">
+  <div class="crumbs"><a href="/vaults/{{$v.ID}}?dir={{q (index .D "Dir")}}">← {{$.T "file.back"}}</a></div>
+  {{if not $cur.Deleted}}<a class="button" href="/vaults/{{$v.ID}}/notes?path={{q (index .D "Path")}}">{{template "icon" "edit"}} {{$.T "file.openInEditor"}}</a>{{end}}
+</div>
 <h2>{{index .D "Path"}} {{if $cur.Deleted}}<span class="badge bad">{{$.T "badge.deleted"}}</span>{{end}}</h2>
 <div class="split">
   <section class="preview card">

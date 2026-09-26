@@ -431,7 +431,7 @@ func TestWebGUI(t *testing.T) {
 	if _, body := b.post("/vaults/"+id+"/backups", url.Values{}); !strings.Contains(body, "Backup created") {
 		t.Fatalf("manual backup: %s", body)
 	}
-	for _, p := range []string{"/", "/vaults", "/vaults/" + id, "/vaults/" + id + "/trash", "/vaults/" + id + "/backups",
+	for _, p := range []string{"/", "/vaults", "/vaults/" + id, "/vaults/" + id + "/notes", "/vaults/" + id + "/trash", "/vaults/" + id + "/backups",
 		"/vaults/" + id + "/members", "/vaults/" + id + "/settings", "/users", "/devices", "/account", "/settings", "/plugin"} {
 		if st, body := b.get(p); st != 200 || strings.Contains(body, "flash err") {
 			t.Errorf("GET %s: %d", p, st)
@@ -440,12 +440,12 @@ func TestWebGUI(t *testing.T) {
 	// Every language renders every page without missing keys or template errors.
 	for _, l := range i18n.Languages {
 		b.get("/lang?l=" + l.Code + "&next=/")
-		for _, p := range []string{"/", "/vaults/" + id, "/vaults/" + id + "/backups", "/vaults/" + id + "/settings", "/vaults/new", "/users", "/devices", "/plugin"} {
+		for _, p := range []string{"/", "/vaults/" + id, "/vaults/" + id + "/notes", "/vaults/" + id + "/backups", "/vaults/" + id + "/settings", "/vaults/new", "/users", "/devices", "/plugin"} {
 			st, body := b.get(p)
 			if st != 200 || !strings.Contains(body, `<html lang="`+l.Code+`">`) || !strings.Contains(body, "</footer>") {
 				t.Errorf("%s %s: status %d or incomplete page", l.Code, p, st)
 			}
-			if m := regexp.MustCompile(`\b(?:nav|tab|col|msg|field|backup|backups|interval|retention|role|kind)\.[a-zA-Z]+\b`).FindString(body); m != "" {
+			if m := regexp.MustCompile(`\b(?:nav|tab|col|msg|field|backup|backups|interval|retention|role|kind|editor|publish|vault|file)\.[a-zA-Z]+\b`).FindString(body); m != "" {
 				t.Errorf("%s %s: untranslated key %q", l.Code, p, m)
 			}
 		}
