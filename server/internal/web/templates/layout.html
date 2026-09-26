@@ -6,10 +6,12 @@
 <title>{{.Title}} · SimpleSync</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/app.js" defer></script>
+{{if .Wide}}<script src="/static/notes.js" defer></script>{{end}}
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 </head>
-<body>
-<header class="top">
+<body{{if .Wide}} class="wide"{{end}}>
+{{template "sprite"}}
+<header class="top"><div class="top-inner">
   <a class="brand" href="/"><img src="/static/icon.svg" alt=""> SimpleSync</a>
   {{if .User}}
   <nav>
@@ -25,7 +27,7 @@
     <form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{.CSRF}}"><button class="link">{{$.T "nav.logout"}}</button></form>
   </div>
   {{end}}
-</header>
+</div></header>
 <main>
 {{if .OK}}<div class="flash ok">{{.OK}}</div>{{end}}
 {{if .Err}}<div class="flash err">{{.Err}}</div>{{end}}
@@ -34,7 +36,7 @@
 <footer>
   <form method="get" action="/lang" class="lang">
     <input type="hidden" name="next" value="{{.Path}}">
-    <label>🌐 <select name="l" data-autosubmit aria-label="{{$.T "footer.language"}}">
+    <label>{{template "icon" "globe"}} <select name="l" data-autosubmit aria-label="{{$.T "footer.language"}}">
       {{range languages}}<option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.Name}}</option>{{end}}
     </select></label>
     <noscript><button class="small">OK</button></noscript>

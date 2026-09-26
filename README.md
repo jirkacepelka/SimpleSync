@@ -5,6 +5,8 @@ Simple self-hosted sync for [Obsidian](https://obsidian.md): a small server plus
 In Obsidian you enter **server address, name and password**, pick a vault from the list, and you're done.
 
 - 🖥️ **Server**: one small Docker container (Go + SQLite, ~27 MB image, tens of MB of RAM). It runs on ZimaOS, a NAS or the cheapest VPS.
+- ✍️ **Web editor**: read and edit notes in the browser, no Obsidian needed. Changes reach every device within seconds.
+- 🌍 **Publishing**: turn chosen notes into a public website at `/p/<name>/`.
 - 🌐 **Web admin**: users, vaults, sharing, devices, version history, trash and backups. Available in English, Čeština, Slovenčina, Deutsch, Français, Español, Italiano and Polski.
 - 📱 **Obsidian plugin**: desktop and mobile (iOS/Android), changes arrive within seconds. Same languages as the web admin.
 - 🔀 **Safe conflicts**: concurrent edits of different parts of a note are merged. When that's not possible, nothing is lost: a copy named `… (conflict …)` is kept.
@@ -116,17 +118,39 @@ After the first sync, both directions sync normally.
 
 ---
 
+## Web editor
+
+Open a vault in the web admin and click **Open notes** (or the **Notes** tab). You get a file tree, an editor and a live preview side by side, so you can write from any browser without installing Obsidian.
+
+- **Saving is automatic**, a moment after you stop typing (or <kbd>Ctrl</kbd>+<kbd>S</kbd>). Saves use the same compare-and-swap commit as the plugin, so they show up on every device within seconds and appear in the version history as `name (web)`.
+- **Edits from elsewhere** appear in the open note by themselves. If a note was changed on another device while you were typing, the changes are merged line by line; if both sides changed the same line, the other version stays and yours is kept next to it as a `… (conflict …).md` copy, exactly like on a device.
+- **Obsidian syntax** in the preview: `[[wikilinks]]` (with `|alias` and `#heading`), embedded images `![[photo.png]]`, callouts `> [!tip]`, `==highlights==`, `#tags`, task lists, tables and properties (front matter).
+- **Files**: create, rename and delete notes and folders from the tree (deleted files go to the vault's Trash). Paste or drop images into the editor to upload them next to the note.
+- Typing `[[` suggests notes to link. The toolbar and shortcuts (<kbd>Ctrl</kbd>+<kbd>B</kbd>/<kbd>I</kbd>/<kbd>K</kbd>) cover the usual formatting; lists continue on <kbd>Enter</kbd>.
+- **Roles apply**: owners and editors can edit, *read only* members get the reading view.
+
+## Publishing
+
+A vault owner can publish notes as a small public website: **Vault → Settings → Publishing**.
+
+- **Address**: the site lives at `https://<your server>/p/<address>/`.
+- **Which notes**: either *chosen notes* (those with `publish: true` in their properties; the **Publish** button in the editor toggles it) or *a whole folder* (empty = the whole vault).
+- **Front page**: optionally a note to show at the site's root; otherwise a list of the published notes.
+
+Only published notes are reachable. Links to notes that aren't published are shown as plain text, so their names and paths don't leak, and an image or file is served only when a published note links to or embeds it. Visitors need no account. Raw HTML in notes is never rendered, and public pages send a strict Content-Security-Policy.
+
 ## Web admin
 
 | Section | What it does |
 |---|---|
 | **Overview** | vaults, disk usage, devices online, alerts about failed backups |
 | **Vaults** | create a vault (name, **backup frequency**, **how long to keep backups**, members) |
+| → Notes | the **web editor** (see above) |
 | → Files | browse folders, preview notes and images, **version history** with restore, download the whole vault as ZIP |
 | → Trash | deleted files and restoring them |
 | → Backups | list of backups, **Back up now**, ZIP download, restore a single file or the **whole vault** |
 | → Members | share the vault with other users: *Owner* / *Editor* / *Read only* |
-| → Settings | rename, change the backup plan, delete the vault |
+| → Settings | rename, change the backup plan, **publishing**, delete the vault |
 | **Users** | create accounts, reset passwords, administrators |
 | **Devices** | every Obsidian login; logging a device out removes its access immediately |
 | **Settings** | how long to keep version history, maximum file size, whether users may create vaults |
@@ -224,7 +248,7 @@ Obsidian (desktop / mobile)                 Server (1 Docker container)
 ### Repository layout
 
 ```
-server/     Go server (cmd/obsisync, internal/{store,api,web,backup,blobs,auth,hub,i18n})
+server/     Go server (cmd/obsisync, internal/{store,api,web,backup,blobs,auth,hub,i18n,markdown,textmerge})
 plugin/     Obsidian plugin (TypeScript); src/engine is Obsidian-independent and tested
 deploy/     docker-compose for home network, VPS with Caddy, and ZimaOS
 Dockerfile  multi-arch image (amd64 + arm64) with the server and the plugin

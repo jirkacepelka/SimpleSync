@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="row"><h1>{{$.T "title.vaults"}}</h1>{{if .User.IsAdmin}}<a class="button primary" href="/vaults/new">+ {{$.T "title.newVault"}}</a>{{end}}</div>
+<div class="page-head"><h1>{{$.T "title.vaults"}}</h1>{{if .User.IsAdmin}}<a class="button primary" href="/vaults/new">{{template "icon" "plus"}} {{$.T "title.newVault"}}</a>{{end}}</div>
 {{template "vaulttable" .}}
 {{if not (index .D "Vaults")}}<p class="muted">{{$.T "vaults.none"}}</p>{{end}}
 {{end}}

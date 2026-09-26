@@ -1,0 +1,74 @@
+{{define "content"}}
+{{$v := .Vault}}
+<script type="application/json" id="ed-config">{{index .D "Config"}}</script>
+<div class="ed" id="editor">
+  <aside class="ed-side" aria-label="{{$.T "editor.files"}}">
+    <div class="ed-side-head">
+      <a class="ed-vault" href="/vaults/{{$v.ID}}" title="{{$.T "editor.vaultPage"}}">{{$v.Name}}</a>
+      {{if atLeast .Role "editor"}}
+      <button class="ghost" type="button" data-act="new-note" title="{{$.T "editor.newNote"}}" aria-label="{{$.T "editor.newNote"}}">{{template "icon" "plus"}}</button>
+      <button class="ghost" type="button" data-act="new-folder" title="{{$.T "editor.newFolder"}}" aria-label="{{$.T "editor.newFolder"}}">{{template "icon" "folder-plus"}}</button>
+      {{end}}
+    </div>
+    <input class="ed-filter" id="ed-filter" type="search" placeholder="{{$.T "editor.search"}}" autocomplete="off">
+    <nav class="ed-tree" id="ed-tree"></nav>
+  </aside>
+  <section class="ed-main">
+    <div class="ed-bar">
+      <button class="ghost" type="button" data-act="toggle-side" title="{{$.T "editor.files"}}" aria-label="{{$.T "editor.files"}}">{{template "icon" "sidebar"}}</button>
+      <span class="ed-crumb" id="ed-crumb"></span>
+      <input class="ed-title" id="ed-title" aria-label="{{$.T "editor.name"}}" autocomplete="off" hidden>
+      <span class="ed-status" id="ed-status" hidden></span>
+      <button class="button small ed-pub" type="button" id="ed-pub" hidden>{{template "icon" "globe"}} <span></span></button>
+      <a class="button small" id="ed-view" target="_blank" rel="noopener" hidden>{{template "icon" "external"}}</a>
+      <a class="button small ghost" id="ed-history" title="{{$.T "file.history"}}" aria-label="{{$.T "file.history"}}" hidden>{{template "icon" "history"}}</a>
+      <div class="seg" id="ed-mode" role="group" hidden>
+        <button type="button" data-mode="edit">{{$.T "editor.modeEdit"}}</button>
+        <button type="button" class="split-btn" data-mode="split">{{$.T "editor.modeSplit"}}</button>
+        <button type="button" data-mode="read">{{$.T "editor.modeRead"}}</button>
+      </div>
+    </div>
+    <div class="ed-toolbar" id="ed-toolbar" hidden>
+      <button type="button" data-md="heading" title="{{$.T "editor.tHeading"}}">H</button>
+      <button type="button" data-md="bold" title="{{$.T "editor.tBold"}} (Ctrl+B)"><b>B</b></button>
+      <button type="button" data-md="italic" title="{{$.T "editor.tItalic"}} (Ctrl+I)"><i>I</i></button>
+      <button type="button" data-md="strike" title="{{$.T "editor.tStrike"}}"><s>S</s></button>
+      <button type="button" data-md="highlight" title="{{$.T "editor.tHighlight"}}">==</button>
+      <span class="sep"></span>
+      <button type="button" data-md="link" title="{{$.T "editor.tLink"}} (Ctrl+K)">{{template "icon" "link"}}</button>
+      <button type="button" data-md="list" title="{{$.T "editor.tList"}}">{{template "icon" "list"}}</button>
+      <button type="button" data-md="numbered" title="{{$.T "editor.tNumbered"}}">{{template "icon" "listnum"}}</button>
+      <button type="button" data-md="task" title="{{$.T "editor.tTask"}}">{{template "icon" "task"}}</button>
+      <button type="button" data-md="quote" title="{{$.T "editor.tQuote"}}">{{template "icon" "quote"}}</button>
+      <button type="button" data-md="callout" title="{{$.T "editor.tCallout"}}">{{template "icon" "callout"}}</button>
+      <button type="button" data-md="code" title="{{$.T "editor.tCode"}}">{{template "icon" "code"}}</button>
+      <span class="sep"></span>
+      <button type="button" data-md="image" title="{{$.T "editor.tImage"}}">{{template "icon" "image"}}</button>
+      <input type="file" id="ed-file" accept="image/*,application/pdf" multiple hidden>
+    </div>
+    <div class="ed-notice" id="ed-notice" hidden><span></span><button type="button" class="small">OK</button></div>
+    <div class="ed-panes" id="ed-panes" data-mode="split" hidden>
+      <textarea class="ed-src" id="ed-src" spellcheck="true" aria-label="{{$.T "editor.source"}}"></textarea>
+      <article class="ed-preview md" id="ed-preview"></article>
+    </div>
+    <div class="ed-binary" id="ed-binary" hidden></div>
+    <div class="ed-empty" id="ed-empty">
+      <div>
+        <h2>{{$.T "editor.empty"}}</h2>
+        <p>{{$.T "editor.emptyHint"}}</p>
+        {{if atLeast .Role "editor"}}<button class="primary" type="button" data-act="new-note">{{template "icon" "plus"}} {{$.T "editor.newNote"}}</button>{{end}}
+      </div>
+    </div>
+  </section>
+  <dialog class="ed-dialog" id="ed-dialog">
+    <form method="dialog">
+      <p id="ed-dialog-msg"></p>
+      <input id="ed-dialog-input" autocomplete="off">
+      <div class="actions">
+        <button value="cancel" formnovalidate>{{$.T "editor.cancel"}}</button>
+        <button value="ok" class="primary" id="ed-dialog-ok">{{$.T "editor.ok"}}</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+{{end}}

@@ -1,6 +1,6 @@
 {
   "name": "simplesync-plugin",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "private": true,
   "description": "SimpleSync: Obsidian plugin for the self-hosted SimpleSync server",
   "type": "module",

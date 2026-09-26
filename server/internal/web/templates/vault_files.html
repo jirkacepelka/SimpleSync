@@ -3,28 +3,28 @@
 {{$v := .Vault}}
 <div class="row">
   <div class="crumbs">
-    <a href="/vaults/{{$v.ID}}">📁 {{$v.Name}}</a>
-    {{range index .D "Crumbs"}} / <a href="/vaults/{{$v.ID}}?dir={{q .Path}}">{{.Name}}</a>{{end}}
+    <a href="/vaults/{{$v.ID}}">{{template "icon" "folder"}} {{$v.Name}}</a>
+    {{range index .D "Crumbs"}}<span class="sep">/</span><a href="/vaults/{{$v.ID}}?dir={{q .Path}}">{{.Name}}</a>{{end}}
   </div>
   <div class="muted">{{$.T "files.summary" (index .D "Stats").Files (bytes (index .D "Stats").Bytes)}} · <a href="/vaults/{{$v.ID}}/zip">{{$.T "files.downloadAll"}}</a></div>
 </div>
 {{if $.Bundle}}
 <div class="card getvault">
-  <a class="button primary" href="/vaults/{{$v.ID}}/obsidian.zip">⬇ {{$.T "obsidian.download"}}</a>
+  <a class="button" href="/vaults/{{$v.ID}}/obsidian.zip">{{template "icon" "download"}} {{$.T "obsidian.download"}}</a>
   <span class="muted">{{$.T "obsidian.downloadHint"}}</span>
 </div>
 {{end}}
 <table>
-  <thead><tr><th>{{$.T "col.name"}}</th><th>{{$.T "col.size"}}</th><th>{{$.T "col.modified"}}</th></tr></thead>
+  <thead><tr><th>{{$.T "col.name"}}</th><th>{{$.T "col.size"}}</th><th>{{$.T "col.modified"}}</th><th></th></tr></thead>
   <tbody>
   {{range index .D "Entries"}}
     {{if .IsDir}}
-    <tr><td><a href="/vaults/{{$v.ID}}?dir={{q .Path}}">📁 {{.Name}}</a></td><td class="muted">{{$.T "files.count" .Count}}</td><td></td></tr>
+    <tr><td><a href="/vaults/{{$v.ID}}?dir={{q .Path}}">{{template "icon" "folder"}}{{.Name}}</a></td><td class="muted">{{$.T "files.count" .Count}}</td><td></td><td></td></tr>
     {{else}}
-    <tr><td><a href="/vaults/{{$v.ID}}/file?path={{q .Path}}">📄 {{.Name}}</a></td><td>{{bytes .File.Size}}</td><td>{{$.Date (ms .File.Mtime)}}</td></tr>
+    <tr><td><a href="/vaults/{{$v.ID}}/notes?path={{q .Path}}">{{template "icon" "file"}}{{.Name}}</a></td><td class="num">{{bytes .File.Size}}</td><td class="num">{{$.Date (ms .File.Mtime)}}</td><td><a class="button small" href="/vaults/{{$v.ID}}/file?path={{q .Path}}">{{template "icon" "history"}} {{$.T "file.history"}}</a></td></tr>
     {{end}}
   {{else}}
-    <tr><td colspan="3" class="muted">{{$.T "files.empty"}}</td></tr>
+    <tr><td colspan="4" class="muted">{{$.T "files.empty"}}</td></tr>
   {{end}}
   </tbody>
 </table>

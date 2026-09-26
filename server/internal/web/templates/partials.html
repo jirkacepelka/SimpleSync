@@ -2,8 +2,11 @@
 <div class="vhead">
   <h1><a href="/vaults">{{$.T "nav.vaults"}}</a> / {{.Vault.Name}}</h1>
   <span class="badge">{{$.RoleName .Role}}</span>
+  <span class="spacer"></span>
+  <a class="button primary" href="/vaults/{{.Vault.ID}}/notes">{{template "icon" "edit"}} {{if atLeast .Role "editor"}}{{$.T "vault.openEditor"}}{{else}}{{$.T "vault.openReader"}}{{end}}</a>
 </div>
 <nav class="tabs">
+  <a href="/vaults/{{.Vault.ID}}/notes" {{if eq .Tab "notes"}}class="on"{{end}}>{{$.T "tab.notes"}}</a>
   <a href="/vaults/{{.Vault.ID}}" {{if eq .Tab "files"}}class="on"{{end}}>{{$.T "tab.files"}}</a>
   <a href="/vaults/{{.Vault.ID}}/trash" {{if eq .Tab "trash"}}class="on"{{end}}>{{$.T "tab.trash"}}</a>
   <a href="/vaults/{{.Vault.ID}}/backups" {{if eq .Tab "backups"}}class="on"{{end}}>{{$.T "tab.backups"}}</a>
@@ -39,13 +42,13 @@
   <tbody>
   {{range .}}
   <tr>
-    <td><a href="/vaults/{{.ID}}"><b>{{.Name}}</b></a></td>
-    <td>{{.Stats.Files}}</td>
-    <td>{{bytes .Stats.Bytes}}</td>
+    <td><a href="/vaults/{{.ID}}/notes"><b>{{.Name}}</b></a></td>
+    <td class="num">{{.Stats.Files}}</td>
+    <td class="num">{{bytes .Stats.Bytes}}</td>
     <td>{{$.T "vaults.schedule" ($.Interval .Backup.IntervalSec) ($.Retention .Backup.RetentionDays)}}</td>
     <td>{{$.DateP .LastBackupAt}}{{if .LastBackupError}} <span class="badge bad">{{$.T "badge.error"}}</span>{{end}}</td>
     <td>{{$.RoleName .Role}}</td>
-    {{if $.Bundle}}<td><a class="button small" href="/vaults/{{.ID}}/obsidian.zip" title="{{$.T "obsidian.downloadHint"}}">⬇ {{$.T "obsidian.download"}}</a></td>{{end}}
+    {{if $.Bundle}}<td><a class="button small" href="/vaults/{{.ID}}/obsidian.zip" title="{{$.T "obsidian.downloadHint"}}">{{template "icon" "download"}} {{$.T "obsidian.download"}}</a></td>{{end}}
   </tr>
   {{end}}
   </tbody>

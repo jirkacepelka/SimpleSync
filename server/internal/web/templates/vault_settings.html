@@ -8,6 +8,32 @@
   {{template "backupfields" (dict "P" $ "Interval" $v.Backup.IntervalSec "Retention" $v.Backup.RetentionDays "Zip" $v.Backup.Zip)}}
   <button class="primary">{{$.T "action.save"}}</button>
 </form>
+{{$pub := index .D "Publish"}}
+<form method="post" action="/vaults/{{$v.ID}}/publish" class="card" id="publish">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <div class="row">
+    <h2 class="flush">{{$.T "publish.title"}}</h2>
+    {{if $pub.Enabled}}<span class="badge good"><span class="dot on"></span>{{$.T "publish.live"}}</span>{{else}}<span class="badge">{{$.T "publish.off"}}</span>{{end}}
+  </div>
+  <p class="muted">{{$.T "publish.intro"}}</p>
+  {{if $pub.Enabled}}<div class="publish-url">{{template "icon" "globe"}} <a href="/p/{{$pub.Slug}}/">{{index .D "Origin"}}/p/{{$pub.Slug}}/</a></div>{{end}}
+  <label class="check"><input type="checkbox" name="enabled" value="1" {{if $pub.Enabled}}checked{{end}}> {{$.T "publish.enable"}}</label>
+  <div class="grid2">
+    <label>{{$.T "publish.slug"}} <input name="slug" value="{{index .D "Slug"}}" required pattern="[a-z0-9][a-z0-9\-]{1,48}[a-z0-9]" autocomplete="off">
+      <span class="field-hint">{{index .D "Origin"}}/p/…/</span></label>
+    <label>{{$.T "publish.siteTitle"}} <input name="title" value="{{$pub.Title}}" placeholder="{{$v.Name}}" maxlength="120"></label>
+  </div>
+  <b>{{$.T "publish.which"}}</b>
+  <div class="radio-cards">
+    <label><input type="radio" name="mode" value="marked" {{if ne $pub.Mode "folder"}}checked{{end}}><span>{{$.T "publish.modeMarked"}}<small>{{$.T "publish.modeMarkedHint"}}</small></span></label>
+    <label><input type="radio" name="mode" value="folder" {{if eq $pub.Mode "folder"}}checked{{end}}><span>{{$.T "publish.modeFolder"}}<small>{{$.T "publish.modeFolderHint"}}</small></span></label>
+  </div>
+  <div class="grid2">
+    <label>{{$.T "publish.folder"}} <input name="folder" value="{{$pub.Folder}}" placeholder="{{$.T "publish.folderPlaceholder"}}"></label>
+    <label>{{$.T "publish.home"}} <input name="home" value="{{$pub.Home}}" placeholder="Home.md"></label>
+  </div>
+  <button class="primary">{{$.T "action.save"}}</button>
+</form>
 <form method="post" action="/vaults/{{$v.ID}}/delete" class="card danger-zone">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
   <h2>{{$.T "vaultSettings.delete"}}</h2>

@@ -2,6 +2,12 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
+## 0.4.0
+
+- **Web editor**: open a vault's notes in the browser and edit them without Obsidian. File tree with search, edit / side-by-side / reading modes, automatic saving, `[[` link suggestions, toolbar and shortcuts, image paste and drop, create, rename and delete of notes and folders. Saves go through the same sync as the plugin, reach devices within seconds and merge with concurrent edits (or keep a conflict copy). Read-only members get the reading view.
+- **Publishing**: vault owners can publish chosen notes (`publish: true`) or a whole folder as a public website at `/p/<address>/`, with a front page, navigation, and Obsidian-style rendering (wikilinks, embeds, callouts, highlights, tags). Unpublished notes and files stay private, including their names.
+- **New look** for the web admin, matching the website: floating navigation, segmented tabs, cleaner tables, icons instead of emoji, dark and light theme.
+
 ## 0.3.5
 
 - **Download for Obsidian**: every vault in the web admin can be downloaded as a ready-to-open Obsidian vault with its notes and the SimpleSync plugin already installed, enabled and set up (server address, name, vault). Open the folder in Obsidian, trust it, enter your password, and it connects by itself. The Plugin page offers the same as an empty starter vault. The ZIP never contains a password or token.
