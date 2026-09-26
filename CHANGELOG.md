@@ -2,6 +2,12 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
+## 0.4.1
+
+- Published sites look better: a top bar with the site name, navigation on the left, an "On this page" outline on the right, the note's own heading as the page title with the date and reading time, "Linked from" cards for notes that link here, previous/next links, and a front page of note cards with short excerpts when no front page note is set.
+- Web editor: the reading mode now uses the full width (the text was squeezed into a narrow column).
+- Clicking a vault in the list opens the vault page again; the editor is one click away with "Open notes".
+
 ## 0.4.0
 
 - **Web editor**: open a vault's notes in the browser and edit them without Obsidian. File tree with search, edit / side-by-side / reading modes, automatic saving, `[[` link suggestions, toolbar and shortcuts, image paste and drop, create, rename and delete of notes and folders. Saves go through the same sync as the plugin, reach devices within seconds and merge with concurrent edits (or keep a conflict copy). Read-only members get the reading view.

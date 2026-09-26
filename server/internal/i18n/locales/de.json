@@ -312,5 +312,11 @@
   "public.empty": "Noch nichts veröffentlicht.",
   "err.invalidSlug": "Verwende 3–50 Kleinbuchstaben, Ziffern und Bindestriche.",
   "err.slugTaken": "Diese Adresse nutzt bereits ein anderer Vault.",
-  "err.invalidPath": "Dieser Pfad ist ungültig."
+  "err.invalidPath": "Dieser Pfad ist ungültig.",
+  "public.onThisPage": "Auf dieser Seite",
+  "public.linkedFrom": "Verlinkt von",
+  "public.previous": "Zurück",
+  "public.next": "Weiter",
+  "public.minRead": "%d Min. Lesezeit",
+  "public.noteCount": "%d Notizen"
 }

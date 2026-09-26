@@ -312,5 +312,11 @@
   "public.empty": "Rien n'est encore publié.",
   "err.invalidSlug": "Utilise 3 à 50 lettres minuscules, chiffres et tirets.",
   "err.slugTaken": "Cette adresse est déjà utilisée par un autre coffre.",
-  "err.invalidPath": "Ce chemin n'est pas valide."
+  "err.invalidPath": "Ce chemin n'est pas valide.",
+  "public.onThisPage": "Sur cette page",
+  "public.linkedFrom": "Mentionné dans",
+  "public.previous": "Précédent",
+  "public.next": "Suivant",
+  "public.minRead": "%d min de lecture",
+  "public.noteCount": "%d notes"
 }

@@ -42,7 +42,7 @@
   <tbody>
   {{range .}}
   <tr>
-    <td><a href="/vaults/{{.ID}}/notes"><b>{{.Name}}</b></a></td>
+    <td><a href="/vaults/{{.ID}}"><b>{{.Name}}</b></a></td>
     <td class="num">{{.Stats.Files}}</td>
     <td class="num">{{bytes .Stats.Bytes}}</td>
     <td>{{$.T "vaults.schedule" ($.Interval .Backup.IntervalSec) ($.Retention .Backup.RetentionDays)}}</td>

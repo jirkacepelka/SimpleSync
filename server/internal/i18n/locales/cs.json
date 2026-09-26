@@ -312,5 +312,11 @@
   "public.empty": "Zatím není nic publikováno.",
   "err.invalidSlug": "Použij 3–50 malých písmen, číslic a pomlček.",
   "err.slugTaken": "Tuto adresu už používá jiný vault.",
-  "err.invalidPath": "Tato cesta není platná."
+  "err.invalidPath": "Tato cesta není platná.",
+  "public.onThisPage": "Na této stránce",
+  "public.linkedFrom": "Odkazují sem",
+  "public.previous": "Předchozí",
+  "public.next": "Další",
+  "public.minRead": "%d min čtení",
+  "public.noteCount": "Poznámek: %d"
 }
