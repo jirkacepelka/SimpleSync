@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS devices (
 	name       TEXT NOT NULL,
 	token_hash TEXT NOT NULL UNIQUE,
 	created_at INTEGER NOT NULL,
-	last_seen  INTEGER NOT NULL
+	last_seen  INTEGER NOT NULL,
+	vault_id   INTEGER REFERENCES vaults(id) ON DELETE SET NULL -- vault the device last synced
 );
 CREATE TABLE IF NOT EXISTS sessions (
 	token_hash TEXT PRIMARY KEY,
@@ -136,6 +137,14 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	// Databases created before devices.vault_id existed.
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('devices') WHERE name = 'vault_id'").Scan(&n); err == nil && n == 0 {
+		if _, err := db.Exec("ALTER TABLE devices ADD COLUMN vault_id INTEGER REFERENCES vaults(id) ON DELETE SET NULL"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("migrate: %w", err)
+		}
 	}
 	return &Store{db: db, Now: time.Now}, nil
 }

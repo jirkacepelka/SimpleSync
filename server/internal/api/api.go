@@ -133,6 +133,7 @@ func (a *API) vault(minRole string, h func(http.ResponseWriter, *http.Request, *
 			return
 		}
 		c.vault, c.role = v, role
+		a.Store.SetDeviceVault(r.Context(), c.device.ID, v.ID)
 		h(w, r, c)
 	})
 }
