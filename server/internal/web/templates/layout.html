@@ -19,6 +19,7 @@
     <a href="/vaults" {{if eq .Nav "vaults"}}class="on"{{end}}>{{$.T "nav.vaults"}}</a>
     {{if .User.IsAdmin}}<a href="/users" {{if eq .Nav "users"}}class="on"{{end}}>{{$.T "nav.users"}}</a>{{end}}
     <a href="/devices" {{if eq .Nav "devices"}}class="on"{{end}}>{{$.T "nav.devices"}}</a>
+    <a href="/agents" {{if eq .Nav "agents"}}class="on"{{end}}>{{$.T "nav.agents"}}</a>
     <a href="/plugin" {{if eq .Nav "plugin"}}class="on"{{end}}>{{$.T "nav.plugin"}}</a>
     {{if .User.IsAdmin}}<a href="/settings" {{if eq .Nav "settings"}}class="on"{{end}}>{{$.T "nav.settings"}}</a>{{end}}
   </nav>

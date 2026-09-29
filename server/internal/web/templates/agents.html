@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1>{{$.T "title.agents"}}</h1>
+<p class="muted">{{$.T "agents.hint"}}</p>
+{{with index .D "NewToken"}}
+<div class="card">
+  <h2>{{$.T "agents.newToken"}}</h2>
+  <p>{{$.T "agents.newTokenHint"}}</p>
+  <p><code>{{.}}</code></p>
+</div>
+{{end}}
+<div class="card">
+  <h2>{{$.T "agents.connect"}}</h2>
+  <table>
+    <tr><th>{{$.T "agents.mcpAddress"}}</th><td><code>{{index .D "MCPURL"}}</code></td></tr>
+  </table>
+  <p><b>Claude</b> ({{$.T "agents.claudeWhere"}}): {{$.T "agents.claudeSteps"}}</p>
+  <p><b>{{$.T "agents.otherAgents"}}</b>: {{$.T "agents.otherSteps"}}</p>
+  <p><code>claude mcp add --transport http simplesync {{index .D "MCPURL"}} --header "Authorization: Bearer osa_…"</code></p>
+</div>
+<table>
+  <thead><tr><th>{{$.T "col.name"}}</th>{{if .User.IsAdmin}}<th>{{$.T "col.user"}}</th>{{end}}<th>{{$.T "agents.vault"}}</th><th>{{$.T "agents.access"}}</th><th>{{$.T "agents.lastUsed"}}</th><th>{{$.T "col.created"}}</th><th></th></tr></thead>
+  <tbody>
+  {{range index .D "Tokens"}}
+  <tr>
+    <td><b>{{.Name}}</b>{{if .ClientID}} <span class="badge">oauth</span>{{end}}</td>
+    {{if $.User.IsAdmin}}<td>{{.Username}}</td>{{end}}
+    <td>{{if .VaultID}}{{.VaultName}}{{else}}{{$.T "agents.allVaults"}}{{end}}</td>
+    <td>{{if .CanWrite}}<span class="badge accent">{{$.T "agents.readWrite"}}</span>{{else}}<span class="badge">{{$.T "agents.readOnly"}}</span>{{end}}</td>
+    <td>{{if .LastUsed.IsZero}}—{{else}}{{$.Ago .LastUsed}}{{end}}</td>
+    <td>{{$.Date .CreatedAt}}</td>
+    <td><form method="post" action="/agents/{{.ID}}/delete" data-confirm="{{$.T "agents.revokeConfirm" .Name}}"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small danger">{{$.T "agents.revoke"}}</button></form></td>
+  </tr>
+  {{else}}
+  <tr><td colspan="7" class="muted">{{$.T "agents.none"}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+<form method="post" action="/agents" class="card">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <h2>{{$.T "agents.create"}}</h2>
+  <div class="grid2">
+    <label>{{$.T "col.name"}} <input name="name" required maxlength="100" placeholder="{{$.T "agents.namePlaceholder"}}" autocomplete="off"></label>
+    <label>{{$.T "agents.vault"}}
+      <select name="vault">
+        <option value="0">{{$.T "agents.allVaults"}}</option>
+        {{range index .D "Vaults"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+      </select></label>
+  </div>
+  {{template "agentAccess" $}}
+  <button class="primary">{{$.T "agents.createButton"}}</button>
+</form>
+{{end}}

@@ -20,6 +20,7 @@ import (
 	"github.com/jirkacepelka/obsisync/server/internal/blobs"
 	"github.com/jirkacepelka/obsisync/server/internal/hub"
 	"github.com/jirkacepelka/obsisync/server/internal/i18n"
+	"github.com/jirkacepelka/obsisync/server/internal/mcp"
 	"github.com/jirkacepelka/obsisync/server/internal/store"
 )
 
@@ -127,6 +128,11 @@ func (w *Web) Register(mux *http.ServeMux) error {
 
 	mux.HandleFunc("GET /devices", w.user(w.devices))
 	mux.HandleFunc("POST /devices/{did}/delete", w.user(w.deviceDelete))
+	mux.HandleFunc("GET /agents", w.user(w.agents))
+	mux.HandleFunc("POST /agents", w.user(w.agentCreate))
+	mux.HandleFunc("POST /agents/{tid}/delete", w.user(w.agentDelete))
+	mux.HandleFunc("GET "+mcp.AuthorizePath, w.user(w.oauthAuthorize))
+	mux.HandleFunc("POST "+mcp.AuthorizePath, w.user(w.oauthAuthorize))
 	mux.HandleFunc("GET /account", w.user(w.account))
 	mux.HandleFunc("POST /account", w.user(w.accountSave))
 	mux.HandleFunc("GET /settings", w.admin(w.settings))
@@ -280,7 +286,9 @@ func (w *Web) render(rw http.ResponseWriter, r *http.Request, name string, p *pa
 	rw.Header().Set("X-Frame-Options", "DENY")
 	rw.Header().Set("X-Content-Type-Options", "nosniff")
 	rw.Header().Set("Referrer-Policy", "same-origin")
-	rw.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	if rw.Header().Get("Content-Security-Policy") == "" {
+		rw.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	}
 	if err := t.Execute(rw, p); err != nil {
 		w.Log.Error("render", "page", name, "err", err)
 	}

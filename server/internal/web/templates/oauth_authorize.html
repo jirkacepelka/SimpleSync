@@ -1,0 +1,20 @@
+{{define "content"}}
+{{$q := index .D "Q"}}
+<form method="post" action="/oauth/authorize" class="card narrow">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  {{range list3 "client_id" "redirect_uri" "state"}}<input type="hidden" name="{{.}}" value="{{$q.Get .}}">{{end}}
+  {{range list3 "response_type" "code_challenge" "code_challenge_method"}}<input type="hidden" name="{{.}}" value="{{$q.Get .}}">{{end}}
+  <h2>{{$.T "oauth.heading" (index .D "Client")}}</h2>
+  <p class="muted">{{$.T "oauth.hint" (index .D "Host") .User.Username}}</p>
+  <label>{{$.T "agents.vault"}}
+    <select name="vault">
+      <option value="0">{{$.T "agents.allVaults"}}</option>
+      {{range index .D "Vaults"}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+    </select></label>
+  {{template "agentAccess" $}}
+  <div class="actions">
+    <button class="primary" name="decision" value="allow">{{$.T "oauth.allow"}}</button>
+    <button name="decision" value="deny">{{$.T "oauth.deny"}}</button>
+  </div>
+</form>
+{{end}}

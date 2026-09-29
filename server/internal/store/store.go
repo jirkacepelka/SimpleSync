@@ -133,7 +133,7 @@ func Open(path string) (*Store, error) {
 	// of a personal sync server is tiny, so this is not a bottleneck.
 	// Consequence: never run a query while iterating rows of another one.
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec(schema + tokenSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
