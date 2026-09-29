@@ -2,9 +2,12 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
-## Unreleased
+## 0.5.0
 
 - **AI agents (MCP)**: the server is now an MCP server at `/mcp`, so Claude and other AI agents can list, read, search, create, edit, append to, move and delete notes without a local folder, including from scheduled tasks. Claude connects as a custom connector with a sign-in and consent page (OAuth); other agents use a token from the new **AI agents** page. Access is per vault or all vaults, read-only or read-write, never more than the user's own role, and revocable at any time. Changes sync to devices and are kept in the version history.
+- **Devices**: the admin Devices tab now shows the server-side vault name of each device.
+- Fix: opening a folder in the web editor now shows its contents.
+- Fix: empty folders now sync between devices, without waiting for a file inside.
 
 ## 0.4.1
 
