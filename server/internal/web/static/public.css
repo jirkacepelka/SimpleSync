@@ -255,3 +255,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   .pub .md { font-size: 11pt; }
   .pub-main { padding: 0; }
 }
+
+/* ---------- link graph ---------- */
+.pub-graph { width: min(1100px, calc(100vw - 32px)); height: min(720px, calc(100dvh - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--bg); color: var(--text); box-shadow: var(--shadow); overflow: hidden; }
+.pub-graph[open] { display: flex; flex-direction: column; }
+.pub-graph::backdrop { background: rgba(0, 0, 0, .55); backdrop-filter: blur(2px); }
+.pub-graph-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 8px 18px; border-bottom: 1px solid var(--line); color: var(--text-strong); }
+.pub-graph canvas { flex: 1; min-height: 0; width: 100%; cursor: grab; touch-action: none; }
+.pub-graph canvas.hover { cursor: pointer; }
+.pub-graph-hint { margin: 0; padding: 8px 18px 10px; border-top: 1px solid var(--line); color: var(--faint); font-size: .8rem; }

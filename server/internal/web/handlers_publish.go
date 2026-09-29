@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"html/template"
@@ -363,6 +364,9 @@ func (w *Web) publicPage(rw http.ResponseWriter, r *http.Request) {
 	}
 	fp := ""
 	switch {
+	case rp == graphFile:
+		s.serveGraph(rw)
+		return
 	case rp == "" && s.notes[pub.Home]:
 		fp = pub.Home
 	case rp == "":
@@ -473,3 +477,42 @@ func (w *Web) servePublicFile(rw http.ResponseWriter, r *http.Request, hash, nam
 
 // siteCache is embedded in Web.
 type siteCache = sync.Map
+
+// graphFile is the reserved path of a site's link graph.
+const graphFile = "_graph.json"
+
+// serveGraph writes the published notes and the links between them as JSON,
+// for the graph view. It contains nothing that is not already public.
+func (s *site) serveGraph(rw http.ResponseWriter) {
+	type node struct {
+		Title  string `json:"title"`
+		URL    string `json:"url"`
+		Folder string `json:"folder,omitempty"`
+	}
+	idx := map[string]int{}
+	nodes := make([]node, 0, len(s.order))
+	for i, fp := range s.order {
+		idx[fp] = i
+		d := path.Dir(fp)
+		if d == "." {
+			d = ""
+		}
+		nodes = append(nodes, node{Title: s.titles[fp], URL: noteURL(s.pub.Slug, fp), Folder: d})
+	}
+	edges := [][2]int{}
+	for to, froms := range s.backlinks {
+		for _, from := range froms {
+			edges = append(edges, [2]int{idx[from], idx[to]})
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i][0] != edges[j][0] {
+			return edges[i][0] < edges[j][0]
+		}
+		return edges[i][1] < edges[j][1]
+	})
+	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
+	rw.Header().Set("Cache-Control", "no-cache")
+	setPublicHeaders(rw)
+	json.NewEncoder(rw).Encode(map[string]any{"nodes": nodes, "edges": edges})
+}
