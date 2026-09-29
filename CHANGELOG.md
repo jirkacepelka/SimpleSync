@@ -2,7 +2,7 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
-## Unreleased
+## 0.6.0
 
 - **Published sites redesigned**, now with a link graph of the published notes: the look of the SimpleSync website (self-hosted Geist type, floating top bar with a Log in button), light/dark switch, a filter for the navigation, a highlighted "on this page" list, heading links, copy buttons for code, a reading progress bar, a mobile menu and print styles.
 
