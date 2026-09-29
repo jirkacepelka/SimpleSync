@@ -131,6 +131,7 @@ type Device struct {
 	UserID    int64
 	Username  string
 	Name      string
+	VaultName string // server-side name of the vault the device last synced; "" if none yet
 	CreatedAt time.Time
 	LastSeen  time.Time
 }
@@ -179,7 +180,7 @@ func (s *Store) DeviceByToken(ctx context.Context, tokenHash string) (*Device, *
 
 // ListDevices lists devices of one user, or of everybody when userID is 0.
 func (s *Store) ListDevices(ctx context.Context, userID int64) ([]*Device, error) {
-	q := "SELECT d.id, d.user_id, u.username, d.name, d.created_at, d.last_seen FROM devices d JOIN users u ON u.id = d.user_id"
+	q := "SELECT d.id, d.user_id, u.username, d.name, COALESCE(v.name, ''), d.created_at, d.last_seen FROM devices d JOIN users u ON u.id = d.user_id LEFT JOIN vaults v ON v.id = d.vault_id"
 	args := []any{}
 	if userID != 0 {
 		q += " WHERE d.user_id = ?"
@@ -194,13 +195,19 @@ func (s *Store) ListDevices(ctx context.Context, userID int64) ([]*Device, error
 	for rows.Next() {
 		var d Device
 		var created, seen int64
-		if err := rows.Scan(&d.ID, &d.UserID, &d.Username, &d.Name, &created, &seen); err != nil {
+		if err := rows.Scan(&d.ID, &d.UserID, &d.Username, &d.Name, &d.VaultName, &created, &seen); err != nil {
 			return nil, err
 		}
 		d.CreatedAt, d.LastSeen = time.Unix(created, 0), time.Unix(seen, 0)
 		out = append(out, &d)
 	}
 	return out, rows.Err()
+}
+
+// SetDeviceVault records the vault a device is syncing.
+func (s *Store) SetDeviceVault(ctx context.Context, deviceID, vaultID int64) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE devices SET vault_id = ? WHERE id = ? AND vault_id IS NOT ?", vaultID, deviceID, vaultID)
+	return err
 }
 
 func (s *Store) DeviceByID(ctx context.Context, id int64) (*Device, error) {

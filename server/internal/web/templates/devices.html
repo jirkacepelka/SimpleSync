@@ -3,11 +3,12 @@
 <p class="muted">{{$.T "devices.hint"}}</p>
 {{$online := index .D "Online"}}
 <table>
-  <thead><tr><th>{{$.T "col.device"}}</th>{{if .User.IsAdmin}}<th>{{$.T "col.user"}}</th>{{end}}<th>{{$.T "col.status"}}</th><th>{{$.T "col.lastSeen"}}</th><th>{{$.T "col.loggedIn"}}</th><th></th></tr></thead>
+  <thead><tr><th>{{$.T "col.device"}}</th><th>{{$.T "col.vault"}}</th>{{if .User.IsAdmin}}<th>{{$.T "col.user"}}</th>{{end}}<th>{{$.T "col.status"}}</th><th>{{$.T "col.lastSeen"}}</th><th>{{$.T "col.loggedIn"}}</th><th></th></tr></thead>
   <tbody>
   {{range index .D "Devices"}}
   <tr>
     <td><b>{{.Name}}</b></td>
+    <td>{{if .VaultName}}{{.VaultName}}{{else}}<span class="muted">–</span>{{end}}</td>
     {{if $.User.IsAdmin}}<td>{{.Username}}</td>{{end}}
     <td>{{if index $online .ID}}<span class="badge good"><span class="dot on"></span>online</span>{{else}}<span class="badge"><span class="dot"></span>offline</span>{{end}}</td>
     <td>{{$.Ago .LastSeen}}</td>
@@ -15,7 +16,7 @@
     <td><form method="post" action="/devices/{{.ID}}/delete" data-confirm="{{$.T "devices.logoutConfirm" .Name}}"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><button class="small danger">{{$.T "nav.logout"}}</button></form></td>
   </tr>
   {{else}}
-  <tr><td colspan="6" class="muted">{{$.T "devices.none"}} <a href="/plugin">{{$.T "devices.howTo"}}</a></td></tr>
+  <tr><td colspan="7" class="muted">{{$.T "devices.none"}} <a href="/plugin">{{$.T "devices.howTo"}}</a></td></tr>
   {{end}}
   </tbody>
 </table>

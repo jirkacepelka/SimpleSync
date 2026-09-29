@@ -144,3 +144,26 @@ func TestRolesAndMembership(t *testing.T) {
 		t.Fatal("invalid backup policy accepted")
 	}
 }
+
+func TestDeviceVaultName(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	u, err := s.CreateUser(ctx, "user1", "pw", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.CreateDevice(ctx, u.ID, "Laptop", "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds, _ := s.ListDevices(ctx, 0); len(ds) != 1 || ds[0].VaultName != "" {
+		t.Fatalf("new device should have no vault: %+v", ds)
+	}
+	v, _ := s.CreateVault(ctx, "Server name", DefaultBackupPolicy, 0)
+	if err := s.SetDeviceVault(ctx, id, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ds, _ := s.ListDevices(ctx, 0); ds[0].VaultName != "Server name" {
+		t.Fatalf("got %q", ds[0].VaultName)
+	}
+}
