@@ -15,7 +15,7 @@
   const el = {
     tree: $("ed-tree"), filter: $("ed-filter"), title: $("ed-title"), crumb: $("ed-crumb"), status: $("ed-status"),
     mode: $("ed-mode"), toolbar: $("ed-toolbar"), panes: $("ed-panes"), src: $("ed-src"), preview: $("ed-preview"),
-    binary: $("ed-binary"), empty: $("ed-empty"), notice: $("ed-notice"), pub: $("ed-pub"), view: $("ed-view"),
+    binary: $("ed-binary"), folder: $("ed-folder"), empty: $("ed-empty"), notice: $("ed-notice"), pub: $("ed-pub"), view: $("ed-view"),
     history: $("ed-history"), file: $("ed-file"), dialog: $("ed-dialog"),
   };
   const store = {
@@ -183,9 +183,8 @@
     if (item.dataset.dir !== undefined) {
       const d = item.dataset.dir;
       openDirs.has(d) ? openDirs.delete(d) : openDirs.add(d);
-      selectedDir = d;
       store.set(`open.${cfg.vault}`, [...openDirs]);
-      renderTree();
+      showFolder(d);
       return;
     }
     if (e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -254,10 +253,58 @@
     el.toolbar.hidden = what !== "text" || !cfg.editable;
     el.mode.hidden = what !== "text";
     el.binary.hidden = what !== "binary";
+    el.folder.hidden = what !== "folder";
     el.empty.hidden = what !== "empty";
-    el.title.hidden = what === "empty";
-    el.history.hidden = what === "empty";
+    el.title.hidden = what === "empty" || what === "folder";
+    el.history.hidden = what === "empty" || what === "folder";
   }
+
+  // Overview of a folder: its subfolders and files, shown in the main pane.
+  async function showFolder(d) {
+    if (note && dirty) await save();
+    note = null;
+    dirty = false;
+    selectedDir = d;
+    history.replaceState(null, "", location.pathname);
+    document.title = `${baseName(d)} · ${cfg.vaultName || "SimpleSync"}`;
+    el.crumb.textContent = dirOf(d) ? dirOf(d) + " /" : "";
+    el.status.hidden = true;
+    el.pub.hidden = el.view.hidden = true;
+    show("folder");
+    const dirs = new Set(), fs = [];
+    for (const f of files) {
+      if (!f.path.startsWith(d + "/")) continue;
+      const rest = f.path.slice(d.length + 1);
+      const i = rest.indexOf("/");
+      if (i >= 0) dirs.add(rest.slice(0, i));
+      else fs.push(f);
+    }
+    const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+    let h = `<h2>${escapeHTML(baseName(d))}</h2>`;
+    if (!dirs.size && !fs.length) h += `<div class="ed-tree-empty">—</div>`;
+    else {
+      h += "<ul>";
+      for (const n of [...dirs].sort(byName)) {
+        h += `<li><div class="ed-item dir" data-dir="${escapeHTML(join(d, n))}" tabindex="0">${icon("chevron", "chev")}<span class="name">${escapeHTML(n)}</span></div></li>`;
+      }
+      for (const f of fs.sort((a, b) => byName(baseName(a.path), baseName(b.path)))) h += fileItem(f, false);
+      h += "</ul>";
+    }
+    el.folder.innerHTML = h;
+    renderTree();
+  }
+  el.folder.addEventListener("click", (e) => {
+    const item = e.target.closest(".ed-item");
+    if (!item) return;
+    if (item.dataset.dir !== undefined) {
+      openDirs.add(item.dataset.dir);
+      store.set(`open.${cfg.vault}`, [...openDirs]);
+      return showFolder(item.dataset.dir);
+    }
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    open(item.dataset.path);
+  });
 
   async function open(p, { keepNotice = false } = {}) {
     if (note && dirty) await save();

@@ -296,6 +296,9 @@ body.wide .flash { margin: 0 0 8px; }
   background-image: radial-gradient(var(--dot) 1.2px, transparent 1.3px); background-size: 22px 22px; }
 .ed-empty h2 { margin: 0 0 6px; font-size: 1.3rem; letter-spacing: -.02em; }
 .ed-empty p { color: var(--muted); margin: 0 0 18px; }
+.ed-folder { padding: 20px 28px; overflow: auto; }
+.ed-folder ul { list-style: none; margin: 0; padding: 0; max-width: 640px; }
+.ed-folder .ed-item { border-radius: var(--r); }
 .ed-binary { padding: 28px; }
 .ed-binary img { max-width: 100%; border-radius: var(--r); border: 1px solid var(--line); }
 .ed-menu { position: fixed; z-index: 60; min-width: 170px; padding: 5px; background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--r); box-shadow: 0 16px 40px -12px rgba(0, 0, 0, .5); }
