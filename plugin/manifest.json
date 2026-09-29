@@ -1,7 +1,7 @@
 {
   "id": "simplesync",
   "name": "SimpleSync",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "minAppVersion": "1.4.0",
   "description": "Sync your vaults through your own self-hosted SimpleSync server. Enter the server address, name and password, then pick a vault.",
   "author": "jirkacepelka",

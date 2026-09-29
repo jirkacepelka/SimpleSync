@@ -267,6 +267,9 @@ func TestPublishing(t *testing.T) {
 	if strings.Contains(body, "publish: true") {
 		t.Fatal("front matter shown on the published page")
 	}
+	if st, g := get("/p/garden/_graph.json"); st != 200 || !strings.Contains(g, `"Garden beds"`) || !strings.Contains(g, `"edges":[[`) || strings.Contains(g, "Private") {
+		t.Fatalf("graph: %d %s", st, g)
+	}
 	if !strings.Contains(body, "Linked from") || !strings.Contains(body, `class="pub-card" href="/p/garden/Home"`) {
 		t.Fatalf("backlink from the published home note missing: %s", body)
 	}
