@@ -55,3 +55,10 @@
 </table>
 {{end}}
 {{end}}
+
+{{define "agentAccess"}}
+<div class="radio-cards">
+  <label><input type="radio" name="access" value="read" checked> <span>{{$.T "agents.readOnly"}}<small>{{$.T "agents.readOnlyHint"}}</small></span></label>
+  <label><input type="radio" name="access" value="write"> <span>{{$.T "agents.readWrite"}}<small>{{$.T "agents.readWriteHint"}}</small></span></label>
+</div>
+{{end}}

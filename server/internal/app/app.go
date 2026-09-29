@@ -13,6 +13,7 @@ import (
 	"github.com/jirkacepelka/obsisync/server/internal/backup"
 	"github.com/jirkacepelka/obsisync/server/internal/blobs"
 	"github.com/jirkacepelka/obsisync/server/internal/hub"
+	"github.com/jirkacepelka/obsisync/server/internal/mcp"
 	"github.com/jirkacepelka/obsisync/server/internal/store"
 	"github.com/jirkacepelka/obsisync/server/internal/web"
 )
@@ -55,6 +56,7 @@ func New(cfg Config) (*App, error) {
 
 	mux := http.NewServeMux()
 	(&api.API{Store: st, Blobs: bl, Hub: h, Guard: guard, Version: cfg.Version, Log: cfg.Log}).Register(mux)
+	(&mcp.Server{Store: st, Blobs: bl, Hub: h, Version: cfg.Version, Log: cfg.Log}).Register(mux)
 	w := &web.Web{Store: st, Blobs: bl, Hub: h, Backup: bk, Guard: guard, Version: cfg.Version, Log: cfg.Log, PluginDir: cfg.PluginDir}
 	if err := w.Register(mux); err != nil {
 		st.Close()

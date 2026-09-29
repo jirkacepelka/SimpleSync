@@ -139,6 +139,17 @@ A vault owner can publish notes as a small public website: **Vault → Settings 
 
 Only published notes are reachable. Links to notes that aren't published are shown as plain text, so their names and paths don't leak, and an image or file is served only when a published note links to or embeds it. Visitors need no account. Raw HTML in notes is never rendered, and public pages send a strict Content-Security-Policy.
 
+## AI agents (MCP)
+
+The server speaks the [Model Context Protocol](https://modelcontextprotocol.io) at `https://<your server>/mcp`, so an AI agent can work with your notes directly, without a synced local folder: answer questions from your notes, file a daily summary, clean up an inbox, or run on a schedule (for example a scheduled task in Claude). Everything it changes goes through the same sync as the plugin: it reaches your devices within seconds, is kept in the version history as `name (agent)`, and deleted notes land in the vault's Trash.
+
+- **Claude** (claude.ai, desktop and mobile app): *Settings → Connectors → Add custom connector*, paste the address and click *Connect*. Claude opens this server's sign-in page, where you pick the vault (or all of them) and whether it may write. The server must be reachable from the internet over https (Claude connects from its own servers).
+- **Claude Code and other agents**: create a token on the **AI agents** page and send it as `Authorization: Bearer <token>`, e.g. `claude mcp add --transport http simplesync https://<your server>/mcp --header "Authorization: Bearer osa_…"`.
+
+Tools: `list_vaults`, `list_notes`, `read_note`, `search_notes`, `recent_changes`, and with write access `create_note`, `update_note` (merges with edits made meanwhile when given the hash from `read_note`), `append_to_note`, `move_note`, `delete_note`. Obsidian's own files (`.obsidian/…`) are hidden, and only text files can be written.
+
+A token (or a Claude connection) belongs to one user and never gets more than that user's role: a read-only member stays read-only whatever the token says. Every connection is listed on the **AI agents** page with when it was last used, and revoking it cuts it off immediately.
+
 ## Web admin
 
 | Section | What it does |
@@ -153,6 +164,7 @@ Only published notes are reachable. Links to notes that aren't published are sho
 | → Settings | rename, change the backup plan, **publishing**, delete the vault |
 | **Users** | create accounts, reset passwords, administrators |
 | **Devices** | every Obsidian login; logging a device out removes its access immediately |
+| **AI agents** | tokens and Claude connections for the MCP endpoint (see above) |
 | **Settings** | how long to keep version history, maximum file size, whether users may create vaults |
 
 The language picker is at the bottom of every page.
