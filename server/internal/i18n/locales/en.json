@@ -325,6 +325,7 @@
   "public.copied": "Copied",
   "public.skip": "Skip to content",
   "public.noMatch": "No matching notes",
+  "public.login": "Log in",
   "nav.agents": "AI agents",
   "title.agents": "AI agents",
   "title.oauth": "Allow access",
