@@ -82,6 +82,30 @@ describe("sync engine against a real server", () => {
 		expect(a.fs.get("obrázek.png")).toBeUndefined();
 	});
 
+	it("syncs empty folders and their removal", async () => {
+		const [a, b] = await pair();
+		a.fs.mkdir("Prázdná/Vnořená");
+		await a.sync();
+		await b.sync();
+		expect(b.fs.folders.has("Prázdná/Vnořená")).toBe(true);
+
+		// Filling the folder on b replaces the marker with a real note.
+		b.fs.set("Prázdná/Vnořená/Nota.md", "obsah");
+		await b.sync();
+		await a.sync();
+		expect(a.fs.get("Prázdná/Vnořená/Nota.md")).toBe("obsah");
+
+		// Removing an empty folder removes it elsewhere.
+		a.fs.mkdir("Dočasná");
+		await a.sync();
+		await b.sync();
+		expect(b.fs.folders.has("Dočasná")).toBe(true);
+		a.fs.folders.delete("Dočasná");
+		await a.sync();
+		await b.sync();
+		expect(b.fs.folders.has("Dočasná")).toBe(false);
+	});
+
 	it("merges concurrent edits of different lines", async () => {
 		const [a, b] = await pair();
 		a.fs.set("n.md", "jedna\ndva\ntři\n");

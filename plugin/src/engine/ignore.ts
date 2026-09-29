@@ -1,3 +1,5 @@
+import { FOLDER_MARKER } from "./types";
+
 // Paths that are never synchronized.
 
 export interface IgnoreOptions {
@@ -20,6 +22,8 @@ export function makeIgnore(o: IgnoreOptions): (path: string) => boolean {
 			return false;
 		}
 		// Other hidden folders (e.g. .git, .stfolder) are not part of notes.
-		return path.split("/").some((seg) => seg.startsWith("."));
+		const segs = path.split("/");
+		if (name === FOLDER_MARKER) segs.pop(); // empty-folder marker: judged by its folder
+		return segs.some((seg) => seg.startsWith("."));
 	};
 }

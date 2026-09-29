@@ -7,6 +7,18 @@ export interface FileStat {
 	mtime: number; // milliseconds
 }
 
+/**
+ * Empty folders sync as an empty file with this name inside them. Real files
+ * only exist on the server, so this is how a folder without notes reaches the
+ * other devices. The LocalFS implementations present each empty folder as such
+ * a file and turn writes and removals of it into folder operations.
+ */
+export const FOLDER_MARKER = ".obsisync-folder";
+
+export function isFolderMarker(path: string): boolean {
+	return path === FOLDER_MARKER || path.endsWith("/" + FOLDER_MARKER);
+}
+
 export interface LocalFS {
 	/** All files of the vault (the engine applies ignore rules itself). */
 	list(): Promise<FileStat[]>;
