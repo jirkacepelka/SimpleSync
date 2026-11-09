@@ -10,23 +10,24 @@ import (
 	"github.com/jirkacepelka/obsisync/server/internal/pathutil"
 )
 
-// Folder access: when a vault has it switched on, members can be limited to
-// parts of the vault. A rule says how much of a folder (or a single file) one
-// may see: nothing, read only, or read and write. Rules belong to a custom
-// role, or to one member as an exception. The most specific rule (the longest
-// matching path) wins; on the same path a member's exception beats the rule of
-// their role. A rule never grants more than the base role: whoever may only
-// read the vault cannot write anywhere. Owners and administrators always see
-// everything.
+// Folder access: when a vault has it switched on, members who are not
+// owners see nothing until they are given folders. Folders come from the
+// member's roles (a member can have several) and from folders given to the
+// member alone. Each folder is given for reading or for editing; a folder
+// includes everything in it, and "" stands for the whole vault. A member
+// sees the sum of everything given, with the higher level winning. A
+// member whose vault role is Read only never edits, whatever is given.
+// Owners and administrators always see everything.
 
-// Access levels of a rule.
+// Access levels of a folder.
 const (
 	LevelNone  = "none"
 	LevelRead  = "read"
 	LevelWrite = "write"
 )
 
-func ValidLevel(l string) bool { return l == LevelNone || l == LevelRead || l == LevelWrite }
+// ValidLevel reports whether l can be given for a folder.
+func ValidLevel(l string) bool { return l == LevelRead || l == LevelWrite }
 
 // ErrCodeForbidden is returned per op when the path may not be written.
 const ErrCodeForbidden = "forbidden"
@@ -37,61 +38,51 @@ var (
 	ErrInvalidRule     = errors.New("err.invalidRule")
 )
 
-// AccessRule limits access to a folder or file ("" = the whole vault).
+// AccessRule gives a folder or file ("" = the whole vault) for reading or
+// editing. In the list sent to devices, Level can also be LevelNone.
 type AccessRule struct {
-	ID     int64  `json:"-"`
-	Path   string `json:"path"`
-	Level  string `json:"level"`
-	Member bool   `json:"-"` // a member's own exception, not a rule of their role
+	ID    int64  `json:"-"`
+	Path  string `json:"path"`
+	Level string `json:"level"`
 }
 
-// Display is the path as shown in the admin ("/" for the whole vault).
-func (r AccessRule) Display() string {
-	if r.Path == "" {
-		return "/"
-	}
-	return r.Path
-}
-
-// VaultRole is a custom role of one vault.
+// VaultRole is a custom role of one vault: a name and the folders it gives.
 type VaultRole struct {
 	ID      int64
 	VaultID int64
 	Name    string
-	Base    string // RoleViewer or RoleEditor
 	Rules   []AccessRule
 	Members int
 }
 
 // Access says what one user may do with the files of one vault.
 type Access struct {
-	Role  string       // base role (custom roles map to their base)
-	Rules []AccessRule // empty when nothing is limited
-	Rev   int64        // the vault's access revision
+	Role    string       // the vault role: owner, editor or viewer
+	Limited bool         // folder access applies to this user
+	Grants  []AccessRule // folders given, from roles and to the member alone
+	Rev     int64        // the vault's access revision
 }
 
-// Restricted reports whether any rule applies (then the user does not see
-// everything, or may not write everywhere their role allows).
-func (a *Access) Restricted() bool { return len(a.Rules) > 0 }
+// Restricted reports whether the user is limited to the folders given.
+func (a *Access) Restricted() bool { return a.Limited }
+
+func covers(folder, p string) bool {
+	return folder == "" || p == folder || strings.HasPrefix(p, folder+"/")
+}
 
 // level returns the access level for p.
 func (a *Access) level(p string) string {
-	f := pathutil.Fold(p)
-	best, lvl, member := -1, "", false
-	for _, r := range a.Rules {
-		rf := pathutil.Fold(r.Path)
-		if rf != "" && f != rf && !strings.HasPrefix(f, rf+"/") {
-			continue
-		}
-		if n := len(rf); n > best || (n == best && r.Member && !member) {
-			best, lvl, member = n, r.Level, r.Member
-		}
-	}
-	if best < 0 {
+	if !a.Limited {
 		if RoleAtLeast(a.Role, RoleEditor) {
 			return LevelWrite
 		}
 		return LevelRead
+	}
+	f, lvl := pathutil.Fold(p), LevelNone
+	for _, g := range a.Grants {
+		if covers(pathutil.Fold(g.Path), f) && (lvl == LevelNone || g.Level == LevelWrite) {
+			lvl = g.Level
+		}
 	}
 	return lvl
 }
@@ -104,20 +95,27 @@ func (a *Access) CanWrite(p string) bool {
 	return RoleAtLeast(a.Role, RoleEditor) && a.level(p) == LevelWrite
 }
 
-// Effective returns the rules that apply, one per path (member exceptions
-// replace the role's rule on the same path), sorted by path. Devices get
-// this list to know what they may keep and upload.
+// Effective returns the access as a list of rules where the longest matching
+// path decides (the form devices understand): the whole vault, then every
+// folder given with the highest level that applies to it. Empty when the
+// user is not limited.
 func (a *Access) Effective() []AccessRule {
-	byPath := map[string]AccessRule{}
-	for _, r := range a.Rules {
-		f := pathutil.Fold(r.Path)
-		if cur, ok := byPath[f]; !ok || (r.Member && !cur.Member) {
-			byPath[f] = r
-		}
+	if !a.Limited {
+		return []AccessRule{}
 	}
-	out := make([]AccessRule, 0, len(byPath))
-	for _, r := range byPath {
-		out = append(out, r)
+	paths := map[string]string{"": ""}
+	for _, g := range a.Grants {
+		paths[pathutil.Fold(g.Path)] = g.Path
+	}
+	out := make([]AccessRule, 0, len(paths))
+	for f, p := range paths {
+		lvl := LevelNone
+		for _, g := range a.Grants {
+			if covers(pathutil.Fold(g.Path), f) && (lvl == LevelNone || g.Level == LevelWrite) {
+				lvl = g.Level
+			}
+		}
+		out = append(out, AccessRule{Path: p, Level: lvl})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
@@ -137,23 +135,19 @@ func (s *Store) Access(ctx context.Context, u *User, vaultID int64) (*Access, er
 	if !enabled || role == RoleOwner {
 		return a, nil
 	}
-	var roleID int64
-	err = s.db.QueryRowContext(ctx, "SELECT COALESCE(role_id, 0) FROM vault_members WHERE vault_id = ? AND user_id = ?", vaultID, u.ID).Scan(&roleID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, path, level, user_id IS NOT NULL FROM vault_access_rules
-		WHERE vault_id = ? AND (role_id = ? OR user_id = ?)`, vaultID, roleID, u.ID)
+	a.Limited = true
+	rows, err := s.db.QueryContext(ctx, `SELECT id, path, level FROM vault_access_rules WHERE vault_id = ?1 AND (user_id = ?2 OR role_id IN
+		(SELECT role_id FROM vault_member_roles WHERE vault_id = ?1 AND user_id = ?2))`, vaultID, u.ID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var r AccessRule
-		if err := rows.Scan(&r.ID, &r.Path, &r.Level, &r.Member); err != nil {
+		if err := rows.Scan(&r.ID, &r.Path, &r.Level); err != nil {
 			return nil, err
 		}
-		a.Rules = append(a.Rules, r)
+		a.Grants = append(a.Grants, r)
 	}
 	return a, rows.Err()
 }
@@ -170,8 +164,8 @@ func (s *Store) AccessRev(ctx context.Context, vaultID int64) int64 {
 	return rev
 }
 
-// SetFolderAccess switches per-folder access rules on or off for a vault.
-// Roles and rules are kept while it is off; they just do not apply.
+// SetFolderAccess switches folder access on or off for a vault. Roles and
+// folders are kept while it is off; they just do not apply.
 func (s *Store) SetFolderAccess(ctx context.Context, vaultID int64, on bool) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.Exec("UPDATE vaults SET folder_access = ? WHERE id = ? AND folder_access != ?", boolInt(on), vaultID, boolInt(on))
@@ -185,15 +179,12 @@ func (s *Store) SetFolderAccess(ctx context.Context, vaultID int64, on bool) err
 	})
 }
 
-// ---- custom roles ----
+// ---- roles ----
 
-func cleanRole(name, base string) (string, error) {
+func cleanRoleName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len([]rune(name)) > 60 {
 		return "", ErrInvalidRoleName
-	}
-	if base != RoleViewer && base != RoleEditor {
-		return "", ErrInvalidRole
 	}
 	return name, nil
 }
@@ -205,47 +196,61 @@ func roleErr(err error) error {
 	return err
 }
 
-func (s *Store) CreateVaultRole(ctx context.Context, vaultID int64, name, base string) (*VaultRole, error) {
-	name, err := cleanRole(name, base)
+// roleNameTaken reports whether another role of the vault has the name,
+// ignoring letter case (SQLite's NOCASE only folds ASCII letters).
+func (s *Store) roleNameTaken(ctx context.Context, vaultID, exceptID int64, name string) bool {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, name FROM vault_roles WHERE vault_id = ?", vaultID)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var n string
+		if rows.Scan(&id, &n) == nil && id != exceptID && pathutil.Fold(n) == pathutil.Fold(name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) CreateVaultRole(ctx context.Context, vaultID int64, name string) (*VaultRole, error) {
+	name, err := cleanRoleName(name)
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.db.ExecContext(ctx, "INSERT INTO vault_roles(vault_id, name, base) VALUES(?, ?, ?)", vaultID, name, base)
+	if s.roleNameTaken(ctx, vaultID, 0, name) {
+		return nil, ErrRoleNameTaken
+	}
+	res, err := s.db.ExecContext(ctx, "INSERT INTO vault_roles(vault_id, name, base) VALUES(?, ?, ?)", vaultID, name, RoleEditor)
 	if err != nil {
 		return nil, roleErr(err)
 	}
 	id, _ := res.LastInsertId()
-	return &VaultRole{ID: id, VaultID: vaultID, Name: name, Base: base}, nil
+	return &VaultRole{ID: id, VaultID: vaultID, Name: name}, nil
 }
 
-// UpdateVaultRole renames a role or changes its base; its members follow.
-func (s *Store) UpdateVaultRole(ctx context.Context, vaultID, id int64, name, base string) error {
-	name, err := cleanRole(name, base)
+func (s *Store) RenameVaultRole(ctx context.Context, vaultID, id int64, name string) error {
+	name, err := cleanRoleName(name)
 	if err != nil {
 		return err
 	}
-	return s.tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.Exec("UPDATE vault_roles SET name = ?, base = ? WHERE id = ? AND vault_id = ?", name, base, id, vaultID)
-		if err != nil {
-			return roleErr(err)
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return ErrNotFound
-		}
-		if _, err := tx.Exec("UPDATE vault_members SET role = ? WHERE role_id = ?", base, id); err != nil {
-			return err
-		}
-		return bumpAccess(tx, vaultID)
-	})
+	if s.roleNameTaken(ctx, vaultID, id, name) {
+		return ErrRoleNameTaken
+	}
+	res, err := s.db.ExecContext(ctx, "UPDATE vault_roles SET name = ? WHERE id = ? AND vault_id = ?", name, id, vaultID)
+	if err != nil {
+		return roleErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
-// DeleteVaultRole deletes a role with its rules. Its members keep the base
-// role without folder limits (other than their own exceptions).
+// DeleteVaultRole deletes a role; its members lose the folders it gave.
 func (s *Store) DeleteVaultRole(ctx context.Context, vaultID, id int64) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.Exec("UPDATE vault_members SET role_id = NULL WHERE role_id = ? AND vault_id = ?", id, vaultID); err != nil {
-			return err
-		}
 		if _, err := tx.Exec("DELETE FROM vault_roles WHERE id = ? AND vault_id = ?", id, vaultID); err != nil {
 			return err
 		}
@@ -253,20 +258,20 @@ func (s *Store) DeleteVaultRole(ctx context.Context, vaultID, id int64) error {
 	})
 }
 
-// VaultRole returns one custom role of a vault (without rules).
+// VaultRole returns one custom role of a vault (without folders).
 func (s *Store) VaultRole(ctx context.Context, vaultID, id int64) (*VaultRole, error) {
 	r := &VaultRole{ID: id, VaultID: vaultID}
-	err := s.db.QueryRowContext(ctx, "SELECT name, base FROM vault_roles WHERE id = ? AND vault_id = ?", id, vaultID).Scan(&r.Name, &r.Base)
+	err := s.db.QueryRowContext(ctx, "SELECT name FROM vault_roles WHERE id = ? AND vault_id = ?", id, vaultID).Scan(&r.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return r, err
 }
 
-// VaultRoles lists the custom roles of a vault with their rules and number
-// of members.
+// VaultRoles lists the roles of a vault with their folders and number of
+// members.
 func (s *Store) VaultRoles(ctx context.Context, vaultID int64) ([]*VaultRole, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT r.id, r.name, r.base, (SELECT COUNT(*) FROM vault_members m WHERE m.role_id = r.id)
+	rows, err := s.db.QueryContext(ctx, `SELECT r.id, r.name, (SELECT COUNT(*) FROM vault_member_roles m WHERE m.role_id = r.id)
 		FROM vault_roles r WHERE r.vault_id = ? ORDER BY r.name`, vaultID)
 	if err != nil {
 		return nil, err
@@ -275,7 +280,7 @@ func (s *Store) VaultRoles(ctx context.Context, vaultID int64) ([]*VaultRole, er
 	byID := map[int64]*VaultRole{}
 	for rows.Next() {
 		r := &VaultRole{VaultID: vaultID}
-		if err := rows.Scan(&r.ID, &r.Name, &r.Base, &r.Members); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Members); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -304,22 +309,29 @@ func (s *Store) VaultRoles(ctx context.Context, vaultID int64) ([]*VaultRole, er
 	return out, rows.Err()
 }
 
-// SetMemberCustomRole gives a member a custom role of the vault.
-func (s *Store) SetMemberCustomRole(ctx context.Context, vaultID, userID, roleID int64) error {
-	r, err := s.VaultRole(ctx, vaultID, roleID)
-	if err != nil {
-		return err
-	}
+// SetMemberRoles replaces the roles of a member.
+func (s *Store) SetMemberRoles(ctx context.Context, vaultID, userID int64, roleIDs []int64) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.Exec("INSERT INTO vault_members(vault_id, user_id, role, role_id) VALUES(?, ?, ?, ?) ON CONFLICT(vault_id, user_id) DO UPDATE SET role = excluded.role, role_id = excluded.role_id",
-			vaultID, userID, r.Base, r.ID); err != nil {
+		var n int
+		tx.QueryRow("SELECT COUNT(*) FROM vault_members WHERE vault_id = ? AND user_id = ?", vaultID, userID).Scan(&n)
+		if n == 0 {
+			return ErrNotFound
+		}
+		if _, err := tx.Exec("DELETE FROM vault_member_roles WHERE vault_id = ? AND user_id = ?", vaultID, userID); err != nil {
 			return err
+		}
+		for _, id := range roleIDs {
+			// INSERT ... SELECT skips ids that are not roles of this vault.
+			if _, err := tx.Exec("INSERT OR IGNORE INTO vault_member_roles(vault_id, user_id, role_id) SELECT ?, ?, id FROM vault_roles WHERE id = ? AND vault_id = ?",
+				vaultID, userID, id, vaultID); err != nil {
+				return err
+			}
 		}
 		return bumpAccess(tx, vaultID)
 	})
 }
 
-// ---- rules ----
+// ---- folders ----
 
 // RulePath normalizes a folder or file path typed in the admin; "" and "/"
 // mean the whole vault.
@@ -335,8 +347,9 @@ func RulePath(p string) (string, error) {
 	return n, nil
 }
 
-// SetAccessRule adds or replaces the rule for path of a custom role (roleID)
-// or of one member (userID); exactly one of them is set.
+// SetAccessRule gives path for reading or editing to a role (roleID) or to
+// one member (userID); exactly one of them is set. Giving the same path
+// again changes its level.
 func (s *Store) SetAccessRule(ctx context.Context, vaultID, roleID, userID int64, path, level string) error {
 	path, err := RulePath(path)
 	if err != nil || !ValidLevel(level) || (roleID == 0) == (userID == 0) {
@@ -367,6 +380,19 @@ func (s *Store) SetAccessRule(ctx context.Context, vaultID, roleID, userID int64
 	})
 }
 
+// SetAccessRuleLevel changes the level of one folder.
+func (s *Store) SetAccessRuleLevel(ctx context.Context, vaultID, ruleID int64, level string) error {
+	if !ValidLevel(level) {
+		return ErrInvalidRule
+	}
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("UPDATE vault_access_rules SET level = ? WHERE id = ? AND vault_id = ?", level, ruleID, vaultID); err != nil {
+			return err
+		}
+		return bumpAccess(tx, vaultID)
+	})
+}
+
 func (s *Store) RemoveAccessRule(ctx context.Context, vaultID, ruleID int64) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.Exec("DELETE FROM vault_access_rules WHERE id = ? AND vault_id = ?", ruleID, vaultID); err != nil {
@@ -376,28 +402,41 @@ func (s *Store) RemoveAccessRule(ctx context.Context, vaultID, ruleID int64) err
 	})
 }
 
-// memberExceptions returns the members' own rules by user id.
-func (s *Store) memberExceptions(ctx context.Context, vaultID int64) (map[int64][]AccessRule, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, user_id, path, level FROM vault_access_rules WHERE vault_id = ? AND user_id IS NOT NULL ORDER BY path_fold", vaultID)
+// memberAccess returns the roles and own folders of every member.
+func (s *Store) memberAccess(ctx context.Context, vaultID int64) (map[int64][]int64, map[int64][]AccessRule, error) {
+	roles := map[int64][]int64{}
+	rows, err := s.db.QueryContext(ctx, "SELECT user_id, role_id FROM vault_member_roles WHERE vault_id = ?", vaultID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	for rows.Next() {
+		var uid, rid int64
+		if err := rows.Scan(&uid, &rid); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		roles[uid] = append(roles[uid], rid)
+	}
+	rows.Close()
+	folders := map[int64][]AccessRule{}
+	rows, err = s.db.QueryContext(ctx, "SELECT id, user_id, path, level FROM vault_access_rules WHERE vault_id = ? AND user_id IS NOT NULL ORDER BY path_fold", vaultID)
+	if err != nil {
+		return nil, nil, err
 	}
 	defer rows.Close()
-	out := map[int64][]AccessRule{}
 	for rows.Next() {
 		var r AccessRule
 		var uid int64
 		if err := rows.Scan(&r.ID, &uid, &r.Path, &r.Level); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		r.Member = true
-		out[uid] = append(out[uid], r)
+		folders[uid] = append(folders[uid], r)
 	}
-	return out, rows.Err()
+	return roles, folders, rows.Err()
 }
 
-// MoveAccessRules makes rules for the folder (or file) from, and anything
-// under it, follow a rename to to.
+// MoveAccessRules makes folders given at from, and anything under it,
+// follow a rename to to.
 func (s *Store) MoveAccessRules(ctx context.Context, vaultID int64, from, to string) error {
 	ff := pathutil.Fold(from)
 	return s.tx(ctx, func(tx *sql.Tx) error {
@@ -574,4 +613,49 @@ func (sc *Scoped) HashReadable(ctx context.Context, hash string) (bool, error) {
 		}
 	}
 	return false, rows.Err()
+}
+
+// migrateFolderAccess converts the rules of 0.8.0 (one role per member,
+// rules that hide or allow, the most specific one winning, members without
+// rules seeing everything) to folders given (0.9.0). Allowing rules become
+// folders; hiding rules are dropped, since nothing hides anymore. Whoever saw
+// the whole vault apart from hidden folders is given the whole vault, so
+// nobody loses access by the upgrade.
+func migrateFolderAccess(db *sql.DB) error {
+	var done int
+	db.QueryRow("SELECT COUNT(*) FROM settings WHERE key = 'folder_access_model'").Scan(&done)
+	if done > 0 {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	steps := []string{
+		// Roles of members.
+		`INSERT OR IGNORE INTO vault_member_roles(vault_id, user_id, role_id)
+			SELECT vault_id, user_id, role_id FROM vault_members WHERE role_id IS NOT NULL`,
+		// A role that did not hide the whole vault gave all of it.
+		`INSERT INTO vault_access_rules(vault_id, role_id, path, path_fold, level)
+			SELECT r.vault_id, r.id, '', '', CASE r.base WHEN 'viewer' THEN 'read' ELSE 'write' END FROM vault_roles r
+			WHERE NOT EXISTS (SELECT 1 FROM vault_access_rules x WHERE x.role_id = r.id AND x.path = '')`,
+		// So did a vault with folder access on to members without a role who
+		// did not hide the whole vault themselves.
+		`INSERT INTO vault_access_rules(vault_id, user_id, path, path_fold, level)
+			SELECT m.vault_id, m.user_id, '', '', CASE m.role WHEN 'viewer' THEN 'read' ELSE 'write' END
+			FROM vault_members m JOIN vaults v ON v.id = m.vault_id
+			WHERE v.folder_access = 1 AND m.role != 'owner' AND m.role_id IS NULL
+			AND NOT EXISTS (SELECT 1 FROM vault_access_rules x WHERE x.user_id = m.user_id AND x.vault_id = m.vault_id AND x.path = '')`,
+		`DELETE FROM vault_access_rules WHERE level NOT IN ('read', 'write')`,
+		`UPDATE vault_members SET role_id = NULL`,
+		`UPDATE vaults SET access_rev = access_rev + 1 WHERE id IN (SELECT DISTINCT vault_id FROM vault_access_rules)`,
+		`INSERT INTO settings(key, value) VALUES('folder_access_model', '2')`,
+	}
+	for _, q := range steps {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

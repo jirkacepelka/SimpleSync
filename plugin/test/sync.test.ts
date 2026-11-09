@@ -329,9 +329,16 @@ describe("folder access", () => {
 		await web.post(`${vp}/members`, { username: "eva", role: "editor" });
 		await web.post(`${vp}/folder-access`, { folder_access: "1" });
 		const evaID = /id="member-(\d+)">\s*<td>eva<\/td>/.exec(await web.get(`${vp}/members`))![1];
-		const rule = (path: string, level: string) => web.post(`${vp}/rules`, { user_id: evaID, back: "members", path, level });
-		await rule("Tajné", "none");
-		await rule("Čtení", "read");
+		const give = (path: string, level: string) => web.post(`${vp}/rules`, { user_id: evaID, back: "members", path, level });
+		const takeAway = async (path: string) => {
+			const page = await web.get(`${vp}/members`);
+			const m = new RegExp(`<code>${path}</code>[\\s\\S]*?action="${vp}/rules/(\\d+)/delete"`).exec(page);
+			await web.post(`${vp}/rules/${m![1]}/delete`, { user_id: evaID, back: "members" });
+		};
+		// Switched on, eva sees nothing until she is given folders.
+		expect((await new Device("probe").connect(id, false, "eva").then(async (d) => (await d.sync(), d))).fs.notes()).toEqual({});
+		await give("Tým", "write");
+		await give("Čtení", "read");
 
 		const eva = await new Device("eva").connect(id, false, "eva");
 		await eva.sync();
@@ -347,15 +354,15 @@ describe("folder access", () => {
 		expect(admin.fs.get("Tým/a.md")).toBe("a upraveno");
 		expect(admin.fs.get("Čtení/c.md")).toBe("c");
 
-		// Access to a folder taken away: its files go to the local trash.
-		await rule("Tým", "none");
+		// A folder taken away: its files go to the local trash.
+		await takeAway("Tým");
 		const r2 = await eva.sync();
 		expect(r2.hidden).toBe(1);
 		expect(eva.fs.notes()).toEqual({ "Čtení/c.md": "c upraveno" });
 		expect(eva.fs.get(".trash/Tým/a.md")).toBe("a upraveno");
 
-		// Access given: the folder arrives without anything changing on the server.
-		await rule("Tajné", "read");
+		// A folder given: it arrives without anything changing on the server.
+		await give("Tajné", "read");
 		await eva.sync();
 		expect(eva.fs.get("Tajné/b.md")).toBe("tajné");
 

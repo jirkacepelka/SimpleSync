@@ -31,17 +31,18 @@ func TestFolderAccess(t *testing.T) {
 	secret := []byte("# Rozpočet\ntajná čísla\n")
 	dev := e.login("jirka")
 	for p, c := range map[string][]byte{
-		"Program 2029/Plan.md":             []byte("# Plán\n[[Rozpočet]]\n"),
-		"Program 2029/Finance/Rozpočet.md": secret,
-		"Program 2029/Kampaň/Text.md":      []byte("# Kampaň\n"),
-		"Jiné.md":                          []byte("# Jiné\n"),
-		"Program 2029/Finance/Starý.md":    []byte("tajná stará čísla\n"),
+		"Program 2029/Plan.md":        []byte("# Plán\n[[Rozpočet]]\n"),
+		"Finance/Rozpočet.md":         secret,
+		"Program 2029/Kampaň/Text.md": []byte("# Kampaň\n"),
+		"Jiné.md":                     []byte("# Jiné\n"),
+		"Finance/Starý.md":            []byte("tajná stará čísla\n"),
+		"Eva/Poznámky.md":             []byte("moje\n"),
 	} {
 		if r := e.put(dev, v.ID, p, c, ""); !r.OK {
 			t.Fatalf("put %s: %+v", p, r)
 		}
 	}
-	old, _ := e.app.Store.File(ctx, v.ID, "Program 2029/Finance/Starý.md")
+	old, _ := e.app.Store.File(ctx, v.ID, "Finance/Starý.md")
 	e.app.Store.Commit(ctx, v.ID, []store.Op{{Path: old.Path, Deleted: true, BaseHash: old.Hash}}, store.Author{Name: "t"}, e.app.Blobs.Has)
 
 	owner := e.webLogin("jirka")
@@ -54,22 +55,33 @@ func TestFolderAccess(t *testing.T) {
 		t.Fatalf("switch on: %d", st)
 	}
 	owner.get(vp + "/roles")
-	owner.post(vp+"/roles", url.Values{"name": {"Tým"}, "base": {"editor"}})
+	// Until she gets a role, eva sees nothing, and the members page says so.
+	if acc, _ := e.app.Store.Access(ctx, eva, v.ID); acc.CanRead("Program 2029/Plan.md") {
+		t.Fatal("a member without roles sees something")
+	}
+	if body := mustGet(owner, vp+"/members"); !strings.Contains(body, "sees nothing") {
+		t.Fatal("members page does not warn that eva sees nothing")
+	}
+	owner.post(vp+"/roles", url.Values{"name": {"Tým"}})
+	owner.post(vp+"/roles", url.Values{"name": {"Kampaň"}})
 	roles, _ := e.app.Store.VaultRoles(ctx, v.ID)
-	if len(roles) != 1 {
+	if len(roles) != 2 {
 		t.Fatalf("roles: %+v", roles)
 	}
-	rid := itoa(roles[0].ID)
-	for p, l := range map[string]string{"/": "none", "Program 2029": "read", "Program 2029/Kampaň": "write"} {
-		if st, body := owner.post(vp+"/rules", url.Values{"role_id": {rid}, "path": {p}, "level": {l}}); st != 200 || strings.Contains(body, "flash err") {
-			t.Fatalf("rule %s: %d", p, st)
+	kampan, tym := itoa(roles[0].ID), itoa(roles[1].ID)
+	for _, r := range []struct{ role, path, level string }{{tym, "Program 2029", "read"}, {kampan, "Program 2029/Kampaň", "read"}} {
+		if st, body := owner.post(vp+"/rules", url.Values{"role_id": {r.role}, "path": {r.path}, "level": {r.level}}); st != 200 || strings.Contains(body, "flash err") {
+			t.Fatalf("folder %s: %d", r.path, st)
 		}
 	}
+	// Switching a folder of a role to editing.
+	roles, _ = e.app.Store.VaultRoles(ctx, v.ID)
+	owner.post(vp+"/rules/"+itoa(roles[0].Rules[0].ID), url.Values{"role_id": {kampan}, "level": {"write"}})
 	owner.get(vp + "/members")
-	owner.post(vp+"/members", url.Values{"user_id": {itoa(eva.ID)}, "role": {"r:" + rid}})
-	owner.post(vp+"/rules", url.Values{"user_id": {itoa(eva.ID)}, "back": {"members"}, "path": {"Program 2029/Finance"}, "level": {"none"}})
-	if acc, _ := e.app.Store.Access(ctx, eva, v.ID); len(acc.Rules) != 4 {
-		t.Fatalf("eva's rules: %+v", acc)
+	owner.post(vp+"/members/"+itoa(eva.ID)+"/roles", url.Values{"role_id": {tym, kampan}})
+	owner.post(vp+"/rules", url.Values{"user_id": {itoa(eva.ID)}, "back": {"members"}, "path": {"Eva"}, "level": {"write"}})
+	if acc, _ := e.app.Store.Access(ctx, eva, v.ID); len(acc.Grants) != 3 || !acc.CanWrite("Program 2029/Kampaň/x.md") || acc.CanWrite("Program 2029/x.md") {
+		t.Fatalf("eva's access: %+v", acc)
 	}
 	for _, l := range i18n.Languages {
 		owner.get("/lang?l=" + l.Code + "&next=/")
@@ -84,8 +96,8 @@ func TestFolderAccess(t *testing.T) {
 		}
 	}
 	owner.get("/lang?l=en&next=/")
-	if body := mustGet(owner, vp+"/members"); !strings.Contains(body, `value="r:`+rid+`" selected`) || !strings.Contains(body, "Program 2029/Finance") {
-		t.Fatal("members page does not show the custom role and exception")
+	if body := mustGet(owner, vp+"/members"); !regexp.MustCompile(`value="`+kampan+`" checked`).MatchString(body) || !strings.Contains(body, "<code>Eva</code>") || strings.Contains(body, "sees nothing") {
+		t.Fatal("members page does not show eva's roles and folder")
 	}
 
 	// ---- sync API ----
@@ -104,7 +116,7 @@ func TestFolderAccess(t *testing.T) {
 		paths = append(paths, c.Path)
 	}
 	sort.Strings(paths)
-	if strings.Join(paths, "|") != "Program 2029/Kampaň/Text.md|Program 2029/Plan.md" || page.Role != "editor" || len(page.Access.Rules) != 4 || page.Access.Rev == 0 {
+	if strings.Join(paths, "|") != "Eva/Poznámky.md|Program 2029/Kampaň/Text.md|Program 2029/Plan.md" || page.Role != "editor" || len(page.Access.Rules) != 4 || page.Access.Rev == 0 {
 		t.Fatalf("changes: %v role=%s access=%+v", paths, page.Role, page.Access)
 	}
 	if st := e.call("GET", api+"/blobs/"+sha(secret), tok, nil, nil); st != 404 {
@@ -143,10 +155,10 @@ func TestFolderAccess(t *testing.T) {
 	for _, f := range tree["files"].([]any) {
 		treePaths = append(treePaths, f.(map[string]any)["path"].(string))
 	}
-	if strings.Join(treePaths, "|") != "Program 2029/Kampaň/Nový.md|Program 2029/Kampaň/Text.md|Program 2029/Plan.md" {
+	if strings.Join(treePaths, "|") != "Eva/Poznámky.md|Program 2029/Kampaň/Nový.md|Program 2029/Kampaň/Text.md|Program 2029/Plan.md" {
 		t.Fatalf("tree: %v", treePaths)
 	}
-	if st, _ := b.api("GET", vp+"/api/note?path="+url.QueryEscape("Program 2029/Finance/Rozpočet.md"), nil); st != 404 {
+	if st, _ := b.api("GET", vp+"/api/note?path="+url.QueryEscape("Finance/Rozpočet.md"), nil); st != 404 {
 		t.Fatalf("hidden note: %d", st)
 	}
 	if _, n := b.api("GET", vp+"/api/note?path="+url.QueryEscape("Program 2029/Plan.md"), nil); n["writable"] != false {
@@ -167,10 +179,10 @@ func TestFolderAccess(t *testing.T) {
 	if _, r := b.api("POST", vp+"/api/render", map[string]any{"path": "Program 2029/Plan.md", "text": "[[Rozpočet]]"}); strings.Contains(r["html"].(string), "Finance") {
 		t.Fatalf("link to a hidden note resolved: %v", r["html"])
 	}
-	sv, _ := e.app.Store.Versions(ctx, v.ID, "Program 2029/Finance/Rozpočet.md")
+	sv, _ := e.app.Store.Versions(ctx, v.ID, "Finance/Rozpočet.md")
 	for _, p := range []string{
-		"/raw?path=" + url.QueryEscape("Program 2029/Finance/Rozpočet.md"),
-		"/file?path=" + url.QueryEscape("Program 2029/Finance/Rozpočet.md"),
+		"/raw?path=" + url.QueryEscape("Finance/Rozpočet.md"),
+		"/file?path=" + url.QueryEscape("Finance/Rozpočet.md"),
 		"/version/" + itoa(sv[0].ID),
 		"/backups",
 	} {
@@ -206,7 +218,7 @@ func TestFolderAccess(t *testing.T) {
 			t.Errorf("%s shows hidden content: %s", name, out)
 		}
 	}
-	if _, failed := e.tool(agent, "read_note", map[string]any{"path": "Program 2029/Finance/Rozpočet"}); !failed {
+	if _, failed := e.tool(agent, "read_note", map[string]any{"path": "Finance/Rozpočet"}); !failed {
 		t.Error("read_note of a hidden note works")
 	}
 	if out, failed := e.tool(agent, "create_note", map[string]any{"path": "Program 2029/X", "content": "x"}); !failed || !strings.Contains(out, "read-only") {
@@ -220,7 +232,7 @@ func TestFolderAccess(t *testing.T) {
 	}
 
 	// The owner still sees everything.
-	if _, tr := owner.api("GET", vp+"/api/tree", nil); len(tr["files"].([]any)) != 5 {
+	if _, tr := owner.api("GET", vp+"/api/tree", nil); len(tr["files"].([]any)) != 6 {
 		t.Fatalf("owner's tree: %v", tr["files"])
 	}
 
@@ -228,7 +240,7 @@ func TestFolderAccess(t *testing.T) {
 	owner.get(vp + "/settings")
 	owner.post(vp+"/folder-access", url.Values{})
 	e.call("GET", api+"/changes?since=0", tok, nil, &page)
-	if len(page.Changes) != 6 || len(page.Access.Rules) != 0 {
+	if len(page.Changes) != 7 || len(page.Access.Rules) != 0 {
 		t.Fatalf("after switching off: %d changes, rules %+v", len(page.Changes), page.Access.Rules)
 	}
 	if st, _ := b.get(vp + "/backups"); st != 200 {

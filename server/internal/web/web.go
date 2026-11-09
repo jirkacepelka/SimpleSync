@@ -123,10 +123,12 @@ func (w *Web) Register(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /vaults/{id}/folder-access", w.vault(store.RoleOwner, w.folderAccessSave))
 	mux.HandleFunc("GET /vaults/{id}/roles", w.vault(store.RoleOwner, w.roles))
 	mux.HandleFunc("POST /vaults/{id}/roles", w.vault(store.RoleOwner, w.roleCreate))
-	mux.HandleFunc("POST /vaults/{id}/roles/{rid}", w.vault(store.RoleOwner, w.roleUpdate))
+	mux.HandleFunc("POST /vaults/{id}/roles/{rid}", w.vault(store.RoleOwner, w.roleRename))
 	mux.HandleFunc("POST /vaults/{id}/roles/{rid}/delete", w.vault(store.RoleOwner, w.roleDelete))
 	mux.HandleFunc("POST /vaults/{id}/rules", w.vault(store.RoleOwner, w.ruleSet))
 	mux.HandleFunc("POST /vaults/{id}/rules/{ruleid}/delete", w.vault(store.RoleOwner, w.ruleDelete))
+	mux.HandleFunc("POST /vaults/{id}/rules/{ruleid}", w.vault(store.RoleOwner, w.ruleLevel))
+	mux.HandleFunc("POST /vaults/{id}/members/{uid}/roles", w.vault(store.RoleOwner, w.memberRoles))
 
 	mux.HandleFunc("GET /users", w.admin(w.users))
 	mux.HandleFunc("POST /users", w.admin(w.userCreate))
@@ -159,7 +161,7 @@ var funcs = template.FuncMap{
 	"retentions": func() []int { return store.BackupRetentions },
 	"languages":  func() []i18n.Language { return i18n.Languages },
 	"list3":      func(a, b, c string) []string { return []string{a, b, c} },
-	"levels":     func() []string { return []string{store.LevelNone, store.LevelRead, store.LevelWrite} },
+	"levels":     func() []string { return []string{store.LevelRead, store.LevelWrite} },
 	"base":       path.Base,
 	"q":          url.QueryEscape,
 	// dict builds a map for passing several values to a sub-template.

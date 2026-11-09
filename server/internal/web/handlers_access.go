@@ -90,7 +90,7 @@ func (w *Web) roles(rw http.ResponseWriter, r *http.Request, p *page) {
 
 func (w *Web) roleCreate(rw http.ResponseWriter, r *http.Request, p *page) {
 	back := fmt.Sprintf("/vaults/%d/roles", p.Vault.ID)
-	role, err := w.Store.CreateVaultRole(r.Context(), p.Vault.ID, r.FormValue("name"), r.FormValue("base"))
+	role, err := w.Store.CreateVaultRole(r.Context(), p.Vault.ID, r.FormValue("name"))
 	if err != nil {
 		redirect(rw, r, back, "", w.errText(r, err))
 		return
@@ -98,14 +98,13 @@ func (w *Web) roleCreate(rw http.ResponseWriter, r *http.Request, p *page) {
 	redirect(rw, r, fmt.Sprintf("%s#role-%d", back, role.ID), w.tr(r, "msg.roleCreated", role.Name), "")
 }
 
-func (w *Web) roleUpdate(rw http.ResponseWriter, r *http.Request, p *page) {
+func (w *Web) roleRename(rw http.ResponseWriter, r *http.Request, p *page) {
 	id := formIntPath(r, "rid")
 	back := fmt.Sprintf("/vaults/%d/roles#role-%d", p.Vault.ID, id)
-	if err := w.Store.UpdateVaultRole(r.Context(), p.Vault.ID, id, r.FormValue("name"), r.FormValue("base")); err != nil {
+	if err := w.Store.RenameVaultRole(r.Context(), p.Vault.ID, id, r.FormValue("name")); err != nil {
 		redirect(rw, r, back, "", w.errText(r, err))
 		return
 	}
-	w.accessChanged(r, p)
 	redirect(rw, r, back, w.tr(r, "msg.settingsSaved"), "")
 }
 
@@ -119,14 +118,15 @@ func (w *Web) roleDelete(rw http.ResponseWriter, r *http.Request, p *page) {
 	redirect(rw, r, back, w.tr(r, "msg.roleDeleted"), "")
 }
 
-// ruleBack is where a rule form returns to: the roles or members page.
+// ruleBack is where a folder form returns to: the roles or members page.
 func ruleBack(r *http.Request, p *page) string {
-	if b := r.FormValue("back"); b == "members" {
+	if r.FormValue("back") == "members" {
 		return fmt.Sprintf("/vaults/%d/members#member-%s", p.Vault.ID, r.FormValue("user_id"))
 	}
 	return fmt.Sprintf("/vaults/%d/roles#role-%s", p.Vault.ID, r.FormValue("role_id"))
 }
 
+// ruleSet gives a folder to a role or a member.
 func (w *Web) ruleSet(rw http.ResponseWriter, r *http.Request, p *page) {
 	back := ruleBack(r, p)
 	if err := w.Store.SetAccessRule(r.Context(), p.Vault.ID, formInt(r, "role_id"), formInt(r, "user_id"), r.FormValue("path"), r.FormValue("level")); err != nil {
@@ -134,7 +134,18 @@ func (w *Web) ruleSet(rw http.ResponseWriter, r *http.Request, p *page) {
 		return
 	}
 	w.accessChanged(r, p)
-	redirect(rw, r, back, w.tr(r, "msg.ruleSaved"), "")
+	redirect(rw, r, back, w.tr(r, "msg.folderAdded"), "")
+}
+
+// ruleLevel switches a folder between reading and editing.
+func (w *Web) ruleLevel(rw http.ResponseWriter, r *http.Request, p *page) {
+	back := ruleBack(r, p)
+	if err := w.Store.SetAccessRuleLevel(r.Context(), p.Vault.ID, formIntPath(r, "ruleid"), r.FormValue("level")); err != nil {
+		redirect(rw, r, back, "", w.errText(r, err))
+		return
+	}
+	w.accessChanged(r, p)
+	redirect(rw, r, back, w.tr(r, "msg.settingsSaved"), "")
 }
 
 func (w *Web) ruleDelete(rw http.ResponseWriter, r *http.Request, p *page) {
@@ -144,15 +155,24 @@ func (w *Web) ruleDelete(rw http.ResponseWriter, r *http.Request, p *page) {
 		return
 	}
 	w.accessChanged(r, p)
-	redirect(rw, r, back, w.tr(r, "msg.ruleRemoved"), "")
+	redirect(rw, r, back, w.tr(r, "msg.folderRemoved"), "")
 }
 
-// setMemberRole applies the role picked in the members form: a built-in
-// role, or "r:<id>" for a custom role.
-func (w *Web) setMemberRole(r *http.Request, p *page, userID int64, value string) error {
-	if id, ok := strings.CutPrefix(value, "r:"); ok {
-		rid, _ := strconv.ParseInt(id, 10, 64)
-		return w.Store.SetMemberCustomRole(r.Context(), p.Vault.ID, userID, rid)
+// memberRoles sets which roles a member has (checkboxes on the members page).
+func (w *Web) memberRoles(rw http.ResponseWriter, r *http.Request, p *page) {
+	uid := formIntPath(r, "uid")
+	back := fmt.Sprintf("/vaults/%d/members#member-%d", p.Vault.ID, uid)
+	r.ParseForm()
+	var ids []int64
+	for _, v := range r.Form["role_id"] {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
 	}
-	return w.Store.SetMember(r.Context(), p.Vault.ID, userID, value)
+	if err := w.Store.SetMemberRoles(r.Context(), p.Vault.ID, uid, ids); err != nil {
+		redirect(rw, r, back, "", w.errText(r, err))
+		return
+	}
+	w.accessChanged(r, p)
+	redirect(rw, r, back, w.tr(r, "msg.rolesSaved"), "")
 }

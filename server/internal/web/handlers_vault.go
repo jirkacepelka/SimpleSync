@@ -356,7 +356,7 @@ func (w *Web) members(rw http.ResponseWriter, r *http.Request, p *page) {
 		d["Roles"] = roles
 		var rules []store.AccessRule
 		for _, m := range members {
-			rules = append(rules, m.Exceptions...)
+			rules = append(rules, m.Folders...)
 		}
 		w.accessPageData(r, p, rules)
 	}
@@ -376,7 +376,7 @@ func (w *Web) memberSet(rw http.ResponseWriter, r *http.Request, p *page) {
 		redirect(rw, r, back, "", w.tr(r, "msg.userNotFound"))
 		return
 	}
-	if err := w.setMemberRole(r, p, u.ID, r.FormValue("role")); err != nil {
+	if err := w.Store.SetMember(r.Context(), p.Vault.ID, u.ID, r.FormValue("role")); err != nil {
 		redirect(rw, r, back, "", w.errText(r, err))
 		return
 	}

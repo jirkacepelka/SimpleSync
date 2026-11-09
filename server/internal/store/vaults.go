@@ -213,17 +213,25 @@ func (s *Store) Role(ctx context.Context, u *User, vaultID int64) (string, error
 }
 
 type Member struct {
-	UserID     int64
-	Username   string
-	Role       string // built-in role; for a custom role its base
-	RoleID     int64  // custom role, 0 = none
-	RoleName   string // name of the custom role
-	Exceptions []AccessRule
+	UserID   int64
+	Username string
+	Role     string       // owner, editor or viewer
+	RoleIDs  []int64      // custom roles (folder access)
+	Folders  []AccessRule // folders given to this member alone
+}
+
+// HasRole reports whether the member has the custom role id.
+func (m Member) HasRole(id int64) bool {
+	for _, r := range m.RoleIDs {
+		if r == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) Members(ctx context.Context, vaultID int64) ([]Member, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.username, m.role, COALESCE(r.id, 0), COALESCE(r.name, '')
-		FROM vault_members m JOIN users u ON u.id = m.user_id LEFT JOIN vault_roles r ON r.id = m.role_id
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.username, m.role FROM vault_members m JOIN users u ON u.id = m.user_id
 		WHERE m.vault_id = ? ORDER BY u.username`, vaultID)
 	if err != nil {
 		return nil, err
@@ -232,7 +240,7 @@ func (s *Store) Members(ctx context.Context, vaultID int64) ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Username, &m.Role, &m.RoleID, &m.RoleName); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.Role); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -241,12 +249,12 @@ func (s *Store) Members(ctx context.Context, vaultID int64) ([]Member, error) {
 		return nil, err
 	}
 	rows.Close() // the store has one connection: finish before the next query
-	ex, err := s.memberExceptions(ctx, vaultID)
+	roles, folders, err := s.memberAccess(ctx, vaultID)
 	if err != nil {
 		return nil, err
 	}
 	for i := range out {
-		out[i].Exceptions = ex[out[i].UserID]
+		out[i].RoleIDs, out[i].Folders = roles[out[i].UserID], folders[out[i].UserID]
 	}
 	return out, nil
 }
@@ -256,7 +264,7 @@ func (s *Store) SetMember(ctx context.Context, vaultID, userID int64, role strin
 		return ErrInvalidRole
 	}
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.Exec("INSERT INTO vault_members(vault_id, user_id, role) VALUES(?, ?, ?) ON CONFLICT(vault_id, user_id) DO UPDATE SET role = excluded.role, role_id = NULL",
+		if _, err := tx.Exec("INSERT INTO vault_members(vault_id, user_id, role) VALUES(?, ?, ?) ON CONFLICT(vault_id, user_id) DO UPDATE SET role = excluded.role",
 			vaultID, userID, role); err != nil {
 			return err
 		}
@@ -270,6 +278,9 @@ func (s *Store) RemoveMember(ctx context.Context, vaultID, userID int64) error {
 			return err
 		}
 		if _, err := tx.Exec("DELETE FROM vault_access_rules WHERE vault_id = ? AND user_id = ?", vaultID, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM vault_member_roles WHERE vault_id = ? AND user_id = ?", vaultID, userID); err != nil {
 			return err
 		}
 		return bumpAccess(tx, vaultID)
