@@ -183,7 +183,7 @@ With folder access on:
 
 The server enforces this everywhere: hidden files do not exist for that member in Obsidian, the web editor, file history, trash, ZIP downloads, links, search or AI agents, and changes outside the allowed folders are refused. Members limited by any rule do not see **Backups**, because a backup is a snapshot of the whole vault. When access to a folder is taken away, the Obsidian plugin moves its files to the Obsidian trash (files the member had edited are kept, but no longer synced); when access is given, the folder arrives with the next sync. Edits in a read-only folder stay on that device and the status bar says how many were not uploaded.
 
-Rules point at paths. Renaming a folder in the web editor moves its rules with it, but a rename in Obsidian does not (the server only sees files being deleted and created), so the *Roles* tab marks rules whose folder no longer exists. Hidden folders like `.obsidian` are covered by `/` too: with `/ → No access`, add `.obsidian → Read only` if those members should get the shared Obsidian settings. Members need the Obsidian plugin from the same release or newer; older plugins keep syncing what they may see but do not notice access changes.
+Rules point at paths. Renaming a folder in the web editor moves its rules with it, but a rename in Obsidian does not (the server only sees files being deleted and created), so the *Roles* tab marks rules whose folder no longer exists. Hidden folders like `.obsidian` are covered by `/` too: with `/ → No access`, add `.obsidian → Read only` if those members should get the shared Obsidian settings. Members need the Obsidian plugin 0.8.0 or newer; older plugins keep syncing what they may see but do not notice access changes.
 
 ### Backups
 

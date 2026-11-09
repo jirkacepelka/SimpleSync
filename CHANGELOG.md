@@ -2,7 +2,7 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
-## Unreleased
+## 0.8.0
 
 - **Folder access**: vault owners can limit members to parts of a vault. Switch it on in the vault's *Settings*, then create custom roles on the new *Roles* tab and add exceptions to single members: per folder *No access*, *Read only* or *Read and edit*. Hidden files disappear for that member everywhere (Obsidian, web editor, history, trash, ZIP, search, AI agents) and writes outside the allowed folders are refused. Off by default; nothing changes until it is switched on.
 - Obsidian plugin: follows folder access changes right away, moves files of folders that were taken away to the Obsidian trash and fetches folders that were given.
