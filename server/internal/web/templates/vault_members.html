@@ -1,18 +1,21 @@
 {{define "content"}}
 {{template "vaultnav" .}}
 {{$v := .Vault}}
+{{$roles := index .D "Roles"}}
+{{if $v.FolderAccess}}{{template "folderlist" .}}{{end}}
 <table>
   <thead><tr><th>{{$.T "col.user"}}</th><th>{{$.T "col.role"}}</th><th></th></tr></thead>
   <tbody>
   {{range index .D "Members"}}
-  <tr>
+  <tr id="member-{{.UserID}}">
     <td>{{.Username}}</td>
     <td>
       <form method="post" action="/vaults/{{$v.ID}}/members" class="inline">
         <input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="user_id" value="{{.UserID}}">
         <select name="role" data-autosubmit>
-          {{$r := .Role}}
-          {{range $role := (list3 "owner" "editor" "viewer")}}<option value="{{$role}}" {{if eq $role $r}}selected{{end}}>{{$.RoleName $role}}</option>{{end}}
+          {{$r := .Role}}{{$rid := .RoleID}}
+          {{range $role := (list3 "owner" "editor" "viewer")}}<option value="{{$role}}" {{if and (eq $role $r) (eq $rid 0)}}selected{{end}}>{{$.RoleName $role}}</option>{{end}}
+          {{if $v.FolderAccess}}{{range $roles}}<option value="r:{{.ID}}" {{if eq .ID $rid}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}
         </select>
         <noscript><button class="small">{{$.T "action.save"}}</button></noscript>
       </form>
@@ -21,6 +24,16 @@
       <form method="post" action="/vaults/{{$v.ID}}/members/remove"><input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="user_id" value="{{.UserID}}"><button class="small danger">{{$.T "action.remove"}}</button></form>
     </td>
   </tr>
+  {{if and $v.FolderAccess (ne .Role "owner")}}
+  <tr class="sub">
+    <td colspan="3">
+      <details {{if .Exceptions}}open{{end}}>
+        <summary>{{$.T "access.exceptions"}} ({{len .Exceptions}})</summary>
+        {{template "accessrules" (dict "P" $ "Rules" .Exceptions "User" .UserID)}}
+      </details>
+    </td>
+  </tr>
+  {{end}}
   {{else}}
   <tr><td colspan="3" class="muted">{{$.T "members.none"}}</td></tr>
   {{end}}
@@ -38,8 +51,9 @@
     <option value="editor">{{$.RoleName "editor"}}</option>
     <option value="viewer">{{$.RoleName "viewer"}}</option>
     <option value="owner">{{$.RoleName "owner"}}</option>
+    {{if $v.FolderAccess}}{{range $roles}}<option value="r:{{.ID}}">{{.Name}}</option>{{end}}{{end}}
   </select>
   <button class="primary">{{$.T "action.add"}}</button>
 </form>
-<p class="muted">{{$.T "members.rolesHint"}}</p>
+<p class="muted">{{$.T "members.rolesHint"}}{{if $v.FolderAccess}} {{$.T "access.membersHint"}}{{end}}</p>
 {{end}}

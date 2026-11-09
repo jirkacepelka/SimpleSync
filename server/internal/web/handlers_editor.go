@@ -83,11 +83,13 @@ func (w *Web) editor(rw http.ResponseWriter, r *http.Request, p *page) {
 // ---- JSON API used by static/editor.js ----
 
 func (w *Web) apiTree(rw http.ResponseWriter, r *http.Request, p *page) {
-	if since := r.URL.Query().Get("rev"); since != "" && since == fmt.Sprint(p.Vault.HeadRev) {
-		writeJSON(rw, 200, map[string]any{"same": true, "rev": p.Vault.HeadRev})
+	// The tree changes with the files and with the user's folder access.
+	rev := fmt.Sprintf("%d.%d", p.Vault.HeadRev, p.Vault.AccessRev)
+	if since := r.URL.Query().Get("rev"); since != "" && since == rev {
+		writeJSON(rw, 200, map[string]any{"same": true, "rev": rev})
 		return
 	}
-	files, err := w.Store.ListFiles(r.Context(), p.Vault.ID, false)
+	files, err := p.Scope.ListFiles(r.Context(), false)
 	if err != nil {
 		jsonErr(rw, 500, "internal", err.Error())
 		return
@@ -99,12 +101,13 @@ func (w *Web) apiTree(rw http.ResponseWriter, r *http.Request, p *page) {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path) })
-	writeJSON(rw, 200, map[string]any{"files": out, "rev": p.Vault.HeadRev})
+	writeJSON(rw, 200, map[string]any{"files": out, "rev": rev})
 }
 
-// current returns the live entry for fp, or nil when it does not exist.
-func (w *Web) current(r *http.Request, vaultID int64, fp string) *store.FileEntry {
-	f, err := w.Store.File(r.Context(), vaultID, fp)
+// current returns the live entry for fp, or nil when it does not exist
+// (or the user may not see it).
+func (w *Web) current(r *http.Request, p *page, fp string) *store.FileEntry {
+	f, err := p.Scope.File(r.Context(), fp)
 	if err != nil || f.Deleted {
 		return nil
 	}
@@ -127,12 +130,12 @@ func (w *Web) blobText(hash string) (string, bool) {
 
 func (w *Web) apiNote(rw http.ResponseWriter, r *http.Request, p *page) {
 	fp := r.URL.Query().Get("path")
-	f := w.current(r, p.Vault.ID, fp)
+	f := w.current(r, p, fp)
 	if f == nil || hiddenPath(fp) {
 		jsonErr(rw, 404, "not_found", w.tr(r, "msg.fileNotFound"))
 		return
 	}
-	out := map[string]any{"path": f.Path, "hash": f.Hash, "size": f.Size, "mtime": f.Mtime}
+	out := map[string]any{"path": f.Path, "hash": f.Hash, "size": f.Size, "mtime": f.Mtime, "writable": p.Scope.A.CanWrite(f.Path)}
 	if r.URL.Query().Get("meta") == "1" {
 		writeJSON(rw, 200, out)
 		return
@@ -165,7 +168,7 @@ func validNotePath(p string) (string, bool) {
 }
 
 func (w *Web) commit(r *http.Request, p *page, ops []store.Op) ([]store.OpResult, error) {
-	res, head, err := w.Store.Commit(r.Context(), p.Vault.ID, ops, w.webAuthor(p), w.Blobs.Has)
+	res, head, err := p.Scope.Commit(r.Context(), ops, w.webAuthor(p), w.Blobs.Has)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +182,7 @@ var unsafeName = regexp.MustCompile(`[\\/:*?"<>|#^\[\]]`)
 
 // conflictPath names a copy the way the Obsidian plugin does:
 // "Note (conflict 2026-09-26 1530 jirka).md".
-func (w *Web) conflictPath(r *http.Request, vaultID int64, fp, user string) string {
+func (w *Web) conflictPath(r *http.Request, p *page, fp, user string) string {
 	dir, name := path.Split(fp)
 	ext := path.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
@@ -191,9 +194,9 @@ func (w *Web) conflictPath(r *http.Request, vaultID int64, fp, user string) stri
 		if n > 1 {
 			suffix = fmt.Sprintf(" %d", n)
 		}
-		p := fmt.Sprintf("%s%s (%s %s %s%s)%s", dir, stem, word, stamp, who, suffix, ext)
-		if w.current(r, vaultID, p) == nil {
-			return p
+		cp := fmt.Sprintf("%s%s (%s %s %s%s)%s", dir, stem, word, stamp, who, suffix, ext)
+		if w.current(r, p, cp) == nil {
+			return cp
 		}
 	}
 }
@@ -240,6 +243,8 @@ func (w *Web) saveText(r *http.Request, p *page, fp, base, text string, create b
 		return map[string]any{"ok": true, "path": res[0].Path, "hash": hash}, 200
 	case store.ErrCodeCaseConflict:
 		return map[string]any{"error": "case_conflict", "message": w.tr(r, "editor.caseConflict", res[0].Current.Path)}, 409
+	case store.ErrCodeForbidden:
+		return map[string]any{"error": "forbidden", "message": w.tr(r, "editor.forbidden")}, 403
 	case store.ErrCodeConflict:
 	default:
 		return map[string]any{"error": res[0].Error, "message": w.tr(r, "editor.saveFailed")}, 500
@@ -274,7 +279,7 @@ func (w *Web) saveText(r *http.Request, p *page, fp, base, text string, create b
 		}
 	}
 	// Overlapping edits: the server version stays, ours goes next to it.
-	copyPath := w.conflictPath(r, p.Vault.ID, fp, p.User.Username)
+	copyPath := w.conflictPath(r, p, fp, p.User.Username)
 	cres, err := w.commit(r, p, []store.Op{{Path: copyPath, Hash: hash, Size: int64(len(text)), Mtime: nowMs()}})
 	if err != nil || !cres[0].OK {
 		return map[string]any{"error": "conflict", "message": w.tr(r, "editor.saveFailed")}, 409
@@ -287,8 +292,8 @@ func (w *Web) saveText(r *http.Request, p *page, fp, base, text string, create b
 }
 
 // liveUnder returns the live files at p, or under the folder p.
-func (w *Web) liveUnder(r *http.Request, vaultID int64, p string, folder bool) ([]store.FileEntry, error) {
-	files, err := w.Store.ListFiles(r.Context(), vaultID, false)
+func (w *Web) liveUnder(r *http.Request, pg *page, p string, folder bool) ([]store.FileEntry, error) {
+	files, err := pg.Scope.ListFiles(r.Context(), false)
 	if err != nil {
 		return nil, err
 	}
@@ -317,9 +322,13 @@ func (w *Web) apiRename(rw http.ResponseWriter, r *http.Request, p *page) {
 		jsonErr(rw, 400, "invalid_name", w.tr(r, "editor.invalidName"))
 		return
 	}
-	files, err := w.liveUnder(r, p.Vault.ID, from, req.Folder)
+	files, err := w.liveUnder(r, p, from, req.Folder)
 	if err != nil || len(files) == 0 {
 		jsonErr(rw, 404, "not_found", w.tr(r, "msg.fileNotFound"))
+		return
+	}
+	if !w.mayMove(r, p, from, to, req.Folder) {
+		jsonErr(rw, 403, "forbidden", w.tr(r, "editor.forbidden"))
 		return
 	}
 	var creates []store.Op
@@ -328,7 +337,7 @@ func (w *Web) apiRename(rw http.ResponseWriter, r *http.Request, p *page) {
 		if req.Folder {
 			np = to + strings.TrimPrefix(f.Path, from)
 		}
-		if w.current(r, p.Vault.ID, np) != nil {
+		if w.current(r, p, np) != nil {
 			jsonErr(rw, 409, "exists", w.tr(r, "editor.exists"))
 			return
 		}
@@ -356,6 +365,10 @@ func (w *Web) apiRename(rw http.ResponseWriter, r *http.Request, p *page) {
 			return
 		}
 	}
+	if req.Folder && failed == "" {
+		// Folder access rules follow the folder.
+		w.Store.MoveAccessRules(r.Context(), p.Vault.ID, from, to)
+	}
 	if failed != "" {
 		msg := w.tr(r, "editor.saveFailed")
 		if failed == store.ErrCodeCaseConflict {
@@ -365,6 +378,27 @@ func (w *Web) apiRename(rw http.ResponseWriter, r *http.Request, p *page) {
 		return
 	}
 	writeJSON(rw, 200, map[string]any{"ok": true, "path": res[0].Path})
+}
+
+// mayMove reports whether the user may move from to to: they must be
+// allowed to write both, and for a folder every file in it, including files
+// they cannot see (otherwise those would stay behind without the folder's
+// rules).
+func (w *Web) mayMove(r *http.Request, p *page, from, to string, folder bool) bool {
+	a := p.Scope.A
+	if !folder {
+		return a.CanWrite(from) && a.CanWrite(to)
+	}
+	all, err := w.Store.ListFiles(r.Context(), p.Vault.ID, false)
+	if err != nil {
+		return false
+	}
+	for _, f := range all {
+		if strings.HasPrefix(f.Path, from+"/") && (!a.CanWrite(f.Path) || !a.CanWrite(to+strings.TrimPrefix(f.Path, from))) {
+			return false
+		}
+	}
+	return true
 }
 
 func (w *Web) apiDelete(rw http.ResponseWriter, r *http.Request, p *page) {
@@ -381,7 +415,7 @@ func (w *Web) apiDelete(rw http.ResponseWriter, r *http.Request, p *page) {
 		jsonErr(rw, 400, "invalid_name", w.tr(r, "editor.invalidName"))
 		return
 	}
-	files, err := w.liveUnder(r, p.Vault.ID, target, req.Folder)
+	files, err := w.liveUnder(r, p, target, req.Folder)
 	if err != nil || len(files) == 0 {
 		jsonErr(rw, 404, "not_found", w.tr(r, "msg.fileNotFound"))
 		return
@@ -390,9 +424,16 @@ func (w *Web) apiDelete(rw http.ResponseWriter, r *http.Request, p *page) {
 	for _, f := range files {
 		ops = append(ops, store.Op{Path: f.Path, Deleted: true, BaseHash: f.Hash, Mtime: nowMs()})
 	}
-	if _, err := w.commit(r, p, ops); err != nil {
+	res, err := w.commit(r, p, ops)
+	if err != nil {
 		jsonErr(rw, 500, "internal", err.Error())
 		return
+	}
+	for _, x := range res {
+		if x.Error == store.ErrCodeForbidden {
+			jsonErr(rw, 403, "forbidden", w.tr(r, "editor.forbidden"))
+			return
+		}
 	}
 	writeJSON(rw, 200, map[string]any{"ok": true})
 }
@@ -437,7 +478,7 @@ func (w *Web) apiUpload(rw http.ResponseWriter, r *http.Request, p *page) {
 			cand = fmt.Sprintf("%s %d%s", stem, n, path.Ext(name))
 		}
 		target = path.Join(dir, cand)
-		if w.current(r, p.Vault.ID, target) == nil {
+		if w.current(r, p, target) == nil {
 			break
 		}
 	}
@@ -451,6 +492,10 @@ func (w *Web) apiUpload(rw http.ResponseWriter, r *http.Request, p *page) {
 		return
 	}
 	res, err := w.commit(r, p, []store.Op{{Path: target, Hash: hash, Size: int64(len(data)), Mtime: nowMs()}})
+	if err == nil && res[0].Error == store.ErrCodeForbidden {
+		jsonErr(rw, 403, "forbidden", w.tr(r, "editor.forbidden"))
+		return
+	}
 	if err != nil || !res[0].OK {
 		jsonErr(rw, 500, "internal", w.tr(r, "editor.uploadFailed"))
 		return
@@ -467,7 +512,7 @@ func (w *Web) apiRender(rw http.ResponseWriter, r *http.Request, p *page) {
 		jsonErr(rw, 400, "bad_request", err.Error())
 		return
 	}
-	files, err := w.Store.ListFiles(r.Context(), p.Vault.ID, false)
+	files, err := p.Scope.ListFiles(r.Context(), false)
 	if err != nil {
 		jsonErr(rw, 500, "internal", err.Error())
 		return
@@ -505,7 +550,7 @@ func (w *Web) apiRender(rw http.ResponseWriter, r *http.Request, p *page) {
 // as a download).
 func (w *Web) raw(rw http.ResponseWriter, r *http.Request, p *page) {
 	fp := r.URL.Query().Get("path")
-	f := w.current(r, p.Vault.ID, fp)
+	f := w.current(r, p, fp)
 	if f == nil {
 		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return

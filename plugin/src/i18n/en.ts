@@ -6,6 +6,7 @@ export const en = {
 	"status.syncing": "Syncing…",
 	"status.synced": "Synced",
 	"status.syncedReadOnly": "Synced (read only)",
+	"status.syncedNotAllowed": "Synced ({count} local changes not uploaded: read-only folder)",
 	"status.expired": "Login expired – log in again",
 	"status.vaultGone": "The vault no longer exists on the server or you lost access",
 	"status.offline": "Server unreachable, will retry",
@@ -18,6 +19,7 @@ export const en = {
 	"notice.conflict": "SimpleSync: conflict in “{path}”.\nYour version was saved as “{copy}”.",
 	"notice.expired": "SimpleSync: the login expired or this device was logged out. Log in again in settings.",
 	"notice.replaced": "SimpleSync: this vault now matches the server. {count} local files were moved to the Obsidian trash (.trash).",
+	"notice.accessRemoved": "SimpleSync: you no longer have access to some folders. {count} files were moved to the Obsidian trash (.trash).",
 
 	"massDelete.title": "SimpleSync: delete files on the server?",
 	"massDelete.body": "{count} files that are on the server are missing on this device. If you deleted them on purpose, delete them on the server too. If not, download them again.",

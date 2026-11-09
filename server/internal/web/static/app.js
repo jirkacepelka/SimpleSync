@@ -7,3 +7,8 @@ document.addEventListener("submit", (e) => {
   const msg = e.target.dataset.confirm;
   if (msg && !confirm(msg)) e.preventDefault();
 });
+// Switching a feature off asks first when the checkbox says so.
+document.addEventListener("submit", (e) => {
+  const box = e.target.querySelector("input[data-confirm-off]");
+  if (box && !box.checked && !confirm(box.dataset.confirmOff)) e.preventDefault();
+});

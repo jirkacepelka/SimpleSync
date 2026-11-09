@@ -55,6 +55,7 @@ type reqCtx struct {
 	device *store.Device
 	vault  *store.Vault
 	role   string
+	scope  *store.Scoped // the vault's files as this user may see them
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -118,11 +119,12 @@ func (a *API) vault(minRole string, h func(http.ResponseWriter, *http.Request, *
 			writeErr(w, http.StatusNotFound, "not_found", "Vault not found")
 			return
 		}
-		role, err := a.Store.Role(r.Context(), c.user, id)
-		if err != nil || role == "" {
+		acc, err := a.Store.Access(r.Context(), c.user, id)
+		if err != nil || acc == nil {
 			writeErr(w, http.StatusNotFound, "not_found", "Vault not found or you have no access")
 			return
 		}
+		role := acc.Role
 		if !store.RoleAtLeast(role, minRole) {
 			writeErr(w, http.StatusForbidden, "forbidden", "You have read-only access to this vault")
 			return
@@ -132,7 +134,7 @@ func (a *API) vault(minRole string, h func(http.ResponseWriter, *http.Request, *
 			writeErr(w, http.StatusNotFound, "not_found", "Vault not found")
 			return
 		}
-		c.vault, c.role = v, role
+		c.vault, c.role, c.scope = v, role, a.Store.Scope(v.ID, acc)
 		a.Store.SetDeviceVault(r.Context(), c.device.ID, v.ID)
 		h(w, r, c)
 	})
@@ -249,7 +251,7 @@ func (a *API) changes(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	if limit <= 0 || limit > 5000 {
 		limit = 1000
 	}
-	entries, head, more, err := a.Store.Changes(r.Context(), c.vault.ID, since, limit)
+	entries, head, more, err := c.scope.Changes(r.Context(), since, limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal", err.Error())
 		return
@@ -257,7 +259,10 @@ func (a *API) changes(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	if entries == nil {
 		entries = []store.FileEntry{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"changes": entries, "head": head, "more": more, "role": c.role})
+	// access lets the device know which folders it may keep and upload;
+	// rules is empty when nothing is limited.
+	writeJSON(w, http.StatusOK, map[string]any{"changes": entries, "head": head, "more": more, "role": c.role,
+		"access": map[string]any{"rev": c.scope.A.Rev, "rules": c.scope.A.Effective()}})
 }
 
 func (a *API) missingBlobs(w http.ResponseWriter, r *http.Request, c *reqCtx) {
@@ -275,7 +280,7 @@ func (a *API) missingBlobs(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 		}
 		// Content of other vaults is not disclosed: unless this vault already
 		// references the hash, the client is asked to upload it.
-		in, _ := a.Store.HashInVault(r.Context(), c.vault.ID, h)
+		in, _ := c.scope.HashReadable(r.Context(), h)
 		if !in || !a.Blobs.Has(h) {
 			missing = append(missing, h)
 		}
@@ -305,7 +310,7 @@ func (a *API) putBlob(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 
 func (a *API) getBlob(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	hash := r.PathValue("hash")
-	if in, err := a.Store.HashInVault(r.Context(), c.vault.ID, hash); err != nil || !in {
+	if in, err := c.scope.HashReadable(r.Context(), hash); err != nil || !in {
 		writeErr(w, http.StatusNotFound, "not_found", "Content not found")
 		return
 	}
@@ -329,7 +334,7 @@ func (a *API) commit(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 		return
 	}
 	author := store.Author{DeviceID: c.device.ID, Name: c.user.Username + " (" + c.device.Name + ")"}
-	results, head, err := a.Store.Commit(r.Context(), c.vault.ID, req.Ops, author, a.Blobs.Has)
+	results, head, err := c.scope.Commit(r.Context(), req.Ops, author, a.Blobs.Has)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal", err.Error())
 		return
@@ -355,7 +360,9 @@ func (a *API) ws(w http.ResponseWriter, r *http.Request, c *reqCtx) {
 	send := func(rev int64) error {
 		wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		b, _ := json.Marshal(map[string]int64{"rev": rev})
+		// access tells the device when its folder access changed, so it
+		// syncs even when no file did.
+		b, _ := json.Marshal(map[string]int64{"rev": rev, "access": a.Store.AccessRev(ctx, c.vault.ID)})
 		return conn.Write(wctx, websocket.MessageText, b)
 	}
 	if send(c.vault.HeadRev) != nil {

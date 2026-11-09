@@ -64,6 +64,8 @@ export interface SyncState {
 	 * server and uploads nothing.
 	 */
 	initialFromServer?: boolean;
+	/** Access revision of the last sync; when the server's differs, folder access changed. */
+	accessRev?: number;
 }
 
 export interface RemoteEntry {

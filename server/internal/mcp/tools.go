@@ -215,8 +215,14 @@ func canWrite(c *caller, v *store.Vault) bool {
 	return c.token.CanWrite && store.RoleAtLeast(v.Role, store.RoleEditor)
 }
 
+// scopedVault is a vault with its files as the caller may see them.
+type scopedVault struct {
+	*store.Vault
+	sc *store.Scoped
+}
+
 // vault picks the vault named in args (by name or id).
-func (s *Server) vault(ctx context.Context, c *caller, args map[string]any, write bool) (*store.Vault, error) {
+func (s *Server) vault(ctx context.Context, c *caller, args map[string]any, write bool) (*scopedVault, error) {
 	vs, err := s.vaults(ctx, c)
 	if err != nil {
 		return nil, err
@@ -247,7 +253,11 @@ func (s *Server) vault(ctx context.Context, c *caller, args map[string]any, writ
 	if write && !canWrite(c, v) {
 		return nil, fmt.Errorf("you have read-only access to vault %q", v.Name)
 	}
-	return v, nil
+	acc, err := s.Store.Access(ctx, c.user, v.ID)
+	if err != nil || acc == nil {
+		return nil, fmt.Errorf("vault %q not found or you have no access (see list_vaults)", want)
+	}
+	return &scopedVault{v, s.Store.Scope(v.ID, acc)}, nil
 }
 
 // ---- paths and content ----
@@ -300,8 +310,8 @@ func folderPrefix(args map[string]any) string {
 }
 
 // live returns the current entry for p, or nil.
-func (s *Server) live(ctx context.Context, v *store.Vault, p string) *store.FileEntry {
-	f, err := s.Store.File(ctx, v.ID, p)
+func (s *Server) live(ctx context.Context, v *scopedVault, p string) *store.FileEntry {
+	f, err := v.sc.File(ctx, p)
 	if err != nil || f.Deleted {
 		return nil
 	}
@@ -310,7 +320,7 @@ func (s *Server) live(ctx context.Context, v *store.Vault, p string) *store.File
 
 // find resolves a path to an existing file, trying ".md" when it has no
 // extension.
-func (s *Server) find(ctx context.Context, v *store.Vault, raw string) (*store.FileEntry, error) {
+func (s *Server) find(ctx context.Context, v *scopedVault, raw string) (*store.FileEntry, error) {
 	p, err := notePath(raw, false)
 	if err != nil {
 		return nil, err
@@ -357,8 +367,8 @@ func author(c *caller) store.Author {
 	return store.Author{Name: c.user.Username + " (" + c.token.Name + ")"}
 }
 
-func (s *Server) commit(ctx context.Context, c *caller, v *store.Vault, ops []store.Op) ([]store.OpResult, error) {
-	res, head, err := s.Store.Commit(ctx, v.ID, ops, author(c), s.Blobs.Has)
+func (s *Server) commit(ctx context.Context, c *caller, v *scopedVault, ops []store.Op) ([]store.OpResult, error) {
+	res, head, err := v.sc.Commit(ctx, ops, author(c), s.Blobs.Has)
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +389,8 @@ func opError(r store.OpResult) error {
 		return fmt.Errorf("%q already exists with different letter case", r.Current.Path)
 	case store.ErrCodeConflict:
 		return fmt.Errorf("%q was changed at the same time, try again", r.Path)
+	case store.ErrCodeForbidden:
+		return fmt.Errorf("you may not change %q: that folder is read-only for you", r.Path)
 	}
 	return fmt.Errorf("saving %q failed: %s", r.Path, r.Error)
 }
@@ -387,7 +399,7 @@ func nowMs() int64 { return time.Now().UnixMilli() }
 
 // conflictPath names a copy the way the plugin and the web editor do:
 // "Note (conflict 2026-09-26 1530 jirka).md".
-func (s *Server) conflictPath(ctx context.Context, v *store.Vault, p, who string) string {
+func (s *Server) conflictPath(ctx context.Context, v *scopedVault, p, who string) string {
 	dir, name := path.Split(p)
 	ext := path.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
@@ -413,7 +425,7 @@ func (s *Server) conflictPath(ctx context.Context, v *store.Vault, p, who string
 // save writes text to p if the server still has base ("" = new file);
 // otherwise it merges with the newer version or keeps a conflict copy,
 // exactly like a device would.
-func (s *Server) save(ctx context.Context, c *caller, v *store.Vault, p, base, text string) (string, error) {
+func (s *Server) save(ctx context.Context, c *caller, v *scopedVault, p, base, text string) (string, error) {
 	hash, err := s.put(text)
 	if err != nil {
 		return "", err
@@ -493,7 +505,7 @@ func listNotes(ctx context.Context, s *Server, c *caller, args map[string]any) (
 	if err != nil {
 		return "", err
 	}
-	files, err := s.Store.ListFiles(ctx, v.ID, false)
+	files, err := v.sc.ListFiles(ctx, false)
 	if err != nil {
 		return "", err
 	}
@@ -548,7 +560,7 @@ func searchNotes(ctx context.Context, s *Server, c *caller, args map[string]any)
 	if len(terms) == 0 {
 		return "", errors.New("query is empty")
 	}
-	files, err := s.Store.ListFiles(ctx, v.ID, false)
+	files, err := v.sc.ListFiles(ctx, false)
 	if err != nil {
 		return "", err
 	}
@@ -626,7 +638,7 @@ func recentChanges(ctx context.Context, s *Server, c *caller, args map[string]an
 	if err != nil {
 		return "", err
 	}
-	vs, err := s.Store.RecentVersions(ctx, v.ID, argInt(args, "limit", 30, 500)*2)
+	vs, err := v.sc.RecentVersions(ctx, argInt(args, "limit", 30, 500)*2)
 	if err != nil {
 		return "", err
 	}
@@ -792,6 +804,11 @@ func moveNote(ctx context.Context, s *Server, c *caller, args map[string]any) (s
 	}
 	if s.live(ctx, v, to) != nil {
 		return "", fmt.Errorf("%q already exists", to)
+	}
+	for _, p := range []string{f.Path, to} {
+		if !v.sc.A.CanWrite(p) {
+			return "", opError(store.OpResult{Path: p, Error: store.ErrCodeForbidden})
+		}
 	}
 	res, err := s.commit(ctx, c, v, []store.Op{{Path: to, Hash: f.Hash, Size: f.Size, Mtime: f.Mtime}})
 	if err != nil {

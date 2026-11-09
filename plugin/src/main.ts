@@ -268,7 +268,9 @@ export default class SimpleSyncPlugin extends Plugin {
 				const r = await engine.sync();
 				for (const p of r.problems) new Notice(`SimpleSync: ${p}`, 10000);
 				if (r.trashed) new Notice(t("notice.replaced", { count: r.trashed }), 15000);
-				this.setStatus({ kind: "idle", text: r.readOnly ? t("status.syncedReadOnly") : t("status.synced"), at: new Date() });
+				if (r.hidden) new Notice(t("notice.accessRemoved", { count: r.hidden }), 15000);
+				const text = r.readOnly ? t("status.syncedReadOnly") : r.notAllowed ? t("status.syncedNotAllowed", { count: r.notAllowed }) : t("status.synced");
+				this.setStatus({ kind: "idle", text, at: new Date() });
 			} catch (e) {
 				await this.handleError(e);
 			}
@@ -349,8 +351,10 @@ export default class SimpleSyncPlugin extends Plugin {
 		ws.onopen = () => (this.wsRetry = 0);
 		ws.onmessage = (ev) => {
 			try {
-				const rev = JSON.parse(String(ev.data)).rev as number;
-				if (this.engine && rev > this.engine.state.lastRev) this.requestSync(300);
+				const msg = JSON.parse(String(ev.data)) as { rev: number; access?: number };
+				const state = this.engine?.state;
+				// Sync on new files, and when folder access changed (no file did).
+				if (state && (msg.rev > state.lastRev || (msg.access !== undefined && msg.access !== (state.accessRev ?? 0)))) this.requestSync(300);
 			} catch {
 				/* ignore */
 			}

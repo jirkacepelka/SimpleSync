@@ -9,9 +9,10 @@
   <a href="/vaults/{{.Vault.ID}}/notes" {{if eq .Tab "notes"}}class="on"{{end}}>{{$.T "tab.notes"}}</a>
   <a href="/vaults/{{.Vault.ID}}" {{if eq .Tab "files"}}class="on"{{end}}>{{$.T "tab.files"}}</a>
   <a href="/vaults/{{.Vault.ID}}/trash" {{if eq .Tab "trash"}}class="on"{{end}}>{{$.T "tab.trash"}}</a>
-  <a href="/vaults/{{.Vault.ID}}/backups" {{if eq .Tab "backups"}}class="on"{{end}}>{{$.T "tab.backups"}}</a>
+  {{if not .Restricted}}<a href="/vaults/{{.Vault.ID}}/backups" {{if eq .Tab "backups"}}class="on"{{end}}>{{$.T "tab.backups"}}</a>{{end}}
   {{if atLeast .Role "owner"}}
   <a href="/vaults/{{.Vault.ID}}/members" {{if eq .Tab "members"}}class="on"{{end}}>{{$.T "tab.members"}}</a>
+  {{if .Vault.FolderAccess}}<a href="/vaults/{{.Vault.ID}}/roles" {{if eq .Tab "roles"}}class="on"{{end}}>{{$.T "tab.roles"}}</a>{{end}}
   <a href="/vaults/{{.Vault.ID}}/settings" {{if eq .Tab "settings"}}class="on"{{end}}>{{$.T "tab.settings"}}</a>
   {{end}}
 </nav>
@@ -61,4 +62,40 @@
   <label><input type="radio" name="access" value="read" checked> <span>{{$.T "agents.readOnly"}}<small>{{$.T "agents.readOnlyHint"}}</small></span></label>
   <label><input type="radio" name="access" value="write"> <span>{{$.T "agents.readWrite"}}<small>{{$.T "agents.readWriteHint"}}</small></span></label>
 </div>
+{{end}}
+
+{{/* Folder access rules of a custom role (Role set) or of a member (User set). */}}
+{{define "accessrules"}}
+{{$p := .P}}
+<table class="rules">
+  <tbody>
+  {{range .Rules}}
+  <tr>
+    <td><code>{{.Display}}</code>{{if index (index $p.D "Missing") .Path}} <span class="badge bad" title="{{$p.T "access.missingHint"}}">{{$p.T "access.missing"}}</span>{{end}}</td>
+    <td>{{$p.T (printf "level.%s" .Level)}}</td>
+    <td class="right">
+      <form method="post" action="/vaults/{{$p.Vault.ID}}/rules/{{.ID}}/delete" class="inline">
+        <input type="hidden" name="_csrf" value="{{$p.CSRF}}">
+        {{if $.User}}<input type="hidden" name="back" value="members"><input type="hidden" name="user_id" value="{{$.User}}">{{else}}<input type="hidden" name="role_id" value="{{$.Role}}">{{end}}
+        <button class="small danger">{{$p.T "action.remove"}}</button>
+      </form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="3" class="muted">{{if $.User}}{{$p.T "access.noExceptions"}}{{else}}{{$p.T "access.noRules"}}{{end}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+<form method="post" action="/vaults/{{$p.Vault.ID}}/rules" class="inline-form">
+  <input type="hidden" name="_csrf" value="{{$p.CSRF}}">
+  {{if $.User}}<input type="hidden" name="back" value="members"><input type="hidden" name="user_id" value="{{$.User}}">{{else}}<input type="hidden" name="role_id" value="{{$.Role}}">{{end}}
+  <input name="path" list="vault-folders" placeholder="{{$p.T "access.pathPlaceholder"}}" aria-label="{{$p.T "access.folder"}}">
+  <select name="level" aria-label="{{$p.T "access.level"}}">
+    {{range levels}}<option value="{{.}}">{{$p.T (printf "level.%s" .)}}</option>{{end}}
+  </select>
+  <button class="small">{{$p.T "action.add"}}</button>
+</form>
+{{end}}
+{{define "folderlist"}}
+<datalist id="vault-folders"><option value="/">{{range index .D "Folders"}}<option value="{{.}}">{{end}}</datalist>
 {{end}}

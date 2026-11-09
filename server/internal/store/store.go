@@ -118,6 +118,23 @@ CREATE TABLE IF NOT EXISTS vault_publish (
 	folder   TEXT NOT NULL DEFAULT '',
 	home     TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS vault_roles (
+	id       INTEGER PRIMARY KEY,
+	vault_id INTEGER NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+	name     TEXT NOT NULL COLLATE NOCASE,
+	base     TEXT NOT NULL, -- viewer or editor: what the role may do where no rule says otherwise
+	UNIQUE (vault_id, name)
+);
+CREATE TABLE IF NOT EXISTS vault_access_rules (
+	id        INTEGER PRIMARY KEY,
+	vault_id  INTEGER NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+	role_id   INTEGER REFERENCES vault_roles(id) ON DELETE CASCADE, -- a rule of a custom role ...
+	user_id   INTEGER REFERENCES users(id) ON DELETE CASCADE,       -- ... or a member's own exception
+	path      TEXT NOT NULL, -- folder or file; '' = the whole vault
+	path_fold TEXT NOT NULL,
+	level     TEXT NOT NULL  -- none, read or write
+);
+CREATE INDEX IF NOT EXISTS vault_access_rules_vault ON vault_access_rules(vault_id);
 CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
@@ -138,15 +155,29 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	// Databases created before devices.vault_id existed.
-	var n int
-	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('devices') WHERE name = 'vault_id'").Scan(&n); err == nil && n == 0 {
-		if _, err := db.Exec("ALTER TABLE devices ADD COLUMN vault_id INTEGER REFERENCES vaults(id) ON DELETE SET NULL"); err != nil {
+	// Columns added after the first release.
+	for _, c := range []struct{ table, col, def string }{
+		{"devices", "vault_id", "INTEGER REFERENCES vaults(id) ON DELETE SET NULL"},
+		{"vaults", "folder_access", "INTEGER NOT NULL DEFAULT 0"},
+		{"vaults", "access_rev", "INTEGER NOT NULL DEFAULT 0"},
+		{"vault_members", "role_id", "INTEGER REFERENCES vault_roles(id) ON DELETE SET NULL"},
+	} {
+		if err := addColumn(db, c.table, c.col, c.def); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("migrate: %w", err)
 		}
 	}
 	return &Store{db: db, Now: time.Now}, nil
+}
+
+// addColumn adds a column to databases created before it existed.
+func addColumn(db *sql.DB, table, col, def string) error {
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, col).Scan(&n); err != nil || n > 0 {
+		return err
+	}
+	_, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def)
+	return err
 }
 
 func (s *Store) Close() error { return s.db.Close() }

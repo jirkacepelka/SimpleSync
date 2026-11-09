@@ -63,6 +63,8 @@ type Vault struct {
 	LastBackupAt    *time.Time
 	LastBackupError string
 	CreatedAt       time.Time
+	FolderAccess    bool   // per-folder access rules are switched on
+	AccessRev       int64  // bumped whenever who may see what changes
 	Role            string // role of the requesting user (filled by list helpers)
 }
 
@@ -74,13 +76,13 @@ var (
 	ErrInvalidRole         = errors.New("err.invalidRole")
 )
 
-const vaultCols = "id, name, head_rev, backup_interval, backup_retention_days, backup_zip, last_backup_at, last_backup_error, created_at"
+const vaultCols = "id, name, head_rev, backup_interval, backup_retention_days, backup_zip, last_backup_at, last_backup_error, created_at, folder_access, access_rev"
 
 func scanVault(row interface{ Scan(...any) error }, extra ...any) (*Vault, error) {
 	var v Vault
 	var last sql.NullInt64
 	var created int64
-	dest := append([]any{&v.ID, &v.Name, &v.HeadRev, &v.Backup.IntervalSec, &v.Backup.RetentionDays, &v.Backup.Zip, &last, &v.LastBackupError, &created}, extra...)
+	dest := append([]any{&v.ID, &v.Name, &v.HeadRev, &v.Backup.IntervalSec, &v.Backup.RetentionDays, &v.Backup.Zip, &last, &v.LastBackupError, &created, &v.FolderAccess, &v.AccessRev}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -211,13 +213,18 @@ func (s *Store) Role(ctx context.Context, u *User, vaultID int64) (string, error
 }
 
 type Member struct {
-	UserID   int64
-	Username string
-	Role     string
+	UserID     int64
+	Username   string
+	Role       string // built-in role; for a custom role its base
+	RoleID     int64  // custom role, 0 = none
+	RoleName   string // name of the custom role
+	Exceptions []AccessRule
 }
 
 func (s *Store) Members(ctx context.Context, vaultID int64) ([]Member, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT u.id, u.username, m.role FROM vault_members m JOIN users u ON u.id = m.user_id WHERE m.vault_id = ? ORDER BY u.username", vaultID)
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.username, m.role, COALESCE(r.id, 0), COALESCE(r.name, '')
+		FROM vault_members m JOIN users u ON u.id = m.user_id LEFT JOIN vault_roles r ON r.id = m.role_id
+		WHERE m.vault_id = ? ORDER BY u.username`, vaultID)
 	if err != nil {
 		return nil, err
 	}
@@ -225,26 +232,48 @@ func (s *Store) Members(ctx context.Context, vaultID int64) ([]Member, error) {
 	var out []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Username, &m.Role); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.Role, &m.RoleID, &m.RoleName); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // the store has one connection: finish before the next query
+	ex, err := s.memberExceptions(ctx, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Exceptions = ex[out[i].UserID]
+	}
+	return out, nil
 }
 
 func (s *Store) SetMember(ctx context.Context, vaultID, userID int64, role string) error {
 	if !ValidRole(role) {
 		return ErrInvalidRole
 	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO vault_members(vault_id, user_id, role) VALUES(?, ?, ?) ON CONFLICT(vault_id, user_id) DO UPDATE SET role = excluded.role",
-		vaultID, userID, role)
-	return err
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("INSERT INTO vault_members(vault_id, user_id, role) VALUES(?, ?, ?) ON CONFLICT(vault_id, user_id) DO UPDATE SET role = excluded.role, role_id = NULL",
+			vaultID, userID, role); err != nil {
+			return err
+		}
+		return bumpAccess(tx, vaultID)
+	})
 }
 
 func (s *Store) RemoveMember(ctx context.Context, vaultID, userID int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM vault_members WHERE vault_id = ? AND user_id = ?", vaultID, userID)
-	return err
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM vault_members WHERE vault_id = ? AND user_id = ?", vaultID, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM vault_access_rules WHERE vault_id = ? AND user_id = ?", vaultID, userID); err != nil {
+			return err
+		}
+		return bumpAccess(tx, vaultID)
+	})
 }
 
 type VaultStats struct {

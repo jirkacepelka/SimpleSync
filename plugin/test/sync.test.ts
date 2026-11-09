@@ -4,7 +4,7 @@ import { MassDeleteError, SyncEngine } from "../src/engine/engine";
 import { makeIgnore } from "../src/engine/ignore";
 import type { SyncState } from "../src/engine/types";
 import { MemFS } from "./memfs";
-import { fetchHttp, startServer } from "./server";
+import { WebAdmin, fetchHttp, startServer } from "./server";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 
@@ -22,9 +22,9 @@ class Device {
 	constructor(public name: string) {}
 
 	client!: Client;
-	async connect(vaultId: number, initialFromServer = false) {
+	async connect(vaultId: number, initialFromServer = false, user = "admin") {
 		const client = new Client(server.url, "", fetchHttp);
-		await client.login("admin", "heslo1234", this.name);
+		await client.login(user, "heslo1234", this.name);
 		this.client = client;
 		const state: SyncState = { vaultId, lastRev: 0, base: {}, initialFromServer };
 		this.engine = new SyncEngine({
@@ -312,4 +312,60 @@ describe("sync engine against a real server", () => {
 		expect(r2.pulled).toBe(1234);
 		expect(Object.keys(b.fs.snapshot()).length).toBe(1234);
 	}, 60_000);
+});
+
+describe("folder access", () => {
+	it("syncs only the folders a member may see and uploads only where they may write", async () => {
+		const web = await new WebAdmin(server.url).login("admin", "heslo1234");
+		await web.post("/users", { username: "eva", password: "heslo1234" });
+		const id = await newVault();
+		const admin = await new Device("admin").connect(id);
+		admin.fs.set("Tým/a.md", "a");
+		admin.fs.set("Tajné/b.md", "tajné");
+		admin.fs.set("Čtení/c.md", "c");
+		await admin.sync();
+
+		const vp = `/vaults/${id}`;
+		await web.post(`${vp}/members`, { username: "eva", role: "editor" });
+		await web.post(`${vp}/folder-access`, { folder_access: "1" });
+		const evaID = /id="member-(\d+)">\s*<td>eva<\/td>/.exec(await web.get(`${vp}/members`))![1];
+		const rule = (path: string, level: string) => web.post(`${vp}/rules`, { user_id: evaID, back: "members", path, level });
+		await rule("Tajné", "none");
+		await rule("Čtení", "read");
+
+		const eva = await new Device("eva").connect(id, false, "eva");
+		await eva.sync();
+		expect(eva.fs.notes()).toEqual({ "Tým/a.md": "a", "Čtení/c.md": "c" });
+
+		// An edit in a read-only folder stays here; one in a writable folder goes up.
+		eva.fs.set("Čtení/c.md", "c upraveno");
+		eva.fs.set("Tým/a.md", "a upraveno");
+		const r = await eva.sync();
+		expect(r.pushed).toBe(1);
+		expect(r.notAllowed).toBe(1);
+		await admin.sync();
+		expect(admin.fs.get("Tým/a.md")).toBe("a upraveno");
+		expect(admin.fs.get("Čtení/c.md")).toBe("c");
+
+		// Access to a folder taken away: its files go to the local trash.
+		await rule("Tým", "none");
+		const r2 = await eva.sync();
+		expect(r2.hidden).toBe(1);
+		expect(eva.fs.notes()).toEqual({ "Čtení/c.md": "c upraveno" });
+		expect(eva.fs.get(".trash/Tým/a.md")).toBe("a upraveno");
+
+		// Access given: the folder arrives without anything changing on the server.
+		await rule("Tajné", "read");
+		await eva.sync();
+		expect(eva.fs.get("Tajné/b.md")).toBe("tajné");
+
+		// Switched off: everything is visible again, and the edit kept here
+		// can now be uploaded.
+		await web.post(`${vp}/folder-access`, {});
+		const r3 = await eva.sync();
+		expect(r3.notAllowed).toBe(0);
+		expect(eva.fs.get("Tým/a.md")).toBe("a upraveno");
+		await admin.sync();
+		expect(admin.fs.get("Čtení/c.md")).toBe("c upraveno");
+	});
 });
