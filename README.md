@@ -243,7 +243,7 @@ Obsidian (desktop / mobile)                 Server (1 Docker container)
 - Over WebSocket the server only says "the vault has a new revision"; devices then fetch the changes. As a fallback the plugin syncs every minute, 2 s after a file changes, and when the app comes back to the foreground.
 - Paths are normalized to Unicode NFC (macOS/iOS vs. Windows vs. Linux). Paths that differ only in letter case are rejected, because they would collide on Windows/macOS.
 - Safety net: if a sync would delete more than half of the files on the server (for example, the vault didn't load), the plugin asks first.
-- Not synced: `.trash/`, `.git/`, other hidden folders, `workspace.json` and the plugin's own data (token). The `.obsidian` folder can be enabled with a toggle.
+- Not synced: `.trash/`, `.git/`, other hidden folders, `workspace.json` and the plugin's own data (token). The `.obsidian` folder can be enabled with a toggle, and individual plugins can be excluded from it.
 
 **API**: everything is under `/api/v1`, authorized with `Authorization: Bearer <device token>`:
 

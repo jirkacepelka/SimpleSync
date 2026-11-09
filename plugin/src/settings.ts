@@ -53,6 +53,50 @@ export function confirmInsecure(app: App, server: string): Promise<boolean> {
 	);
 }
 
+/** Lists the installed plugins and lets the user pick which ones are synced. */
+export class PluginSyncModal extends Modal {
+	constructor(
+		app: App,
+		private plugin: SimpleSyncPlugin,
+	) {
+		super(app);
+	}
+
+	async onOpen() {
+		this.titleEl.setText(t("plugins.title"));
+		const dir = `${this.app.vault.configDir}/plugins`;
+		let ids: string[] = [];
+		try {
+			ids = (await this.app.vault.adapter.list(dir)).folders.map((f) => f.slice(f.lastIndexOf("/") + 1));
+		} catch {
+			// no plugins folder
+		}
+		const s = this.plugin.settings;
+		ids = ids.filter((id) => id !== this.plugin.manifest.id);
+		for (const id of s.excludedPlugins) if (!ids.includes(id)) ids.push(id);
+		ids.sort((a, b) => a.localeCompare(b));
+		this.contentEl.createEl("p", { text: t("plugins.desc"), cls: "obsisync-message" });
+		if (!ids.length) this.contentEl.createEl("p", { text: t("plugins.none") });
+		for (const id of ids) {
+			new Setting(this.contentEl).setName(id).addToggle((c) =>
+				c.setValue(!s.excludedPlugins.includes(id)).onChange((on) => {
+					s.excludedPlugins = on ? s.excludedPlugins.filter((x) => x !== id) : [...s.excludedPlugins, id];
+					this.changed = true;
+				}),
+			);
+		}
+	}
+
+	private changed = false;
+
+	async onClose() {
+		this.contentEl.empty();
+		if (!this.changed) return;
+		await this.plugin.saveSettings();
+		await this.plugin.restart(true);
+	}
+}
+
 /**
  * Shown on the first start of a vault downloaded from the web admin: the
  * server, name and vault are preset, only the password is missing.
@@ -506,8 +550,18 @@ export class SimpleSyncSettingTab extends PluginSettingTab {
 							s.syncConfig = v;
 							await this.plugin.saveSettings();
 							await this.plugin.restart(v);
+							this.refresh();
 						}),
 					);
+				},
+			},
+			{
+				name: t("connected.syncPlugins"),
+				desc: t("connected.syncPluginsDesc"),
+				visible: () => visible() && s.syncConfig,
+				build: (row) => {
+					row.addButton((b) => b.setButtonText(t("connected.syncPluginsButton")).onClick(() => new PluginSyncModal(this.app, this.plugin).open()));
+					return () => row.settingEl.toggle(visible() && s.syncConfig);
 				},
 			},
 			{

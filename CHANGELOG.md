@@ -2,6 +2,10 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
+## Unreleased
+
+- **Choose which plugins to sync**: with *Also sync Obsidian settings* on, a new *Choose…* button lets you turn syncing off per plugin (for plugins with device-specific settings).
+
 ## 0.6.0
 
 - **Published sites redesigned**, now with a link graph of the published notes: the look of the SimpleSync website (self-hosted Geist type, floating top bar with a Log in button), light/dark switch, a filter for the navigation, a highlighted "on this page" list, heading links, copy buttons for code, a reading progress bar, a mobile menu and print styles.
