@@ -122,17 +122,24 @@ CREATE TABLE IF NOT EXISTS vault_roles (
 	id       INTEGER PRIMARY KEY,
 	vault_id INTEGER NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
 	name     TEXT NOT NULL COLLATE NOCASE,
-	base     TEXT NOT NULL, -- viewer or editor: what the role may do where no rule says otherwise
+	base     TEXT NOT NULL, -- unused since 0.9.0
 	UNIQUE (vault_id, name)
 );
+CREATE TABLE IF NOT EXISTS vault_member_roles (
+	vault_id INTEGER NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+	user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	role_id  INTEGER NOT NULL REFERENCES vault_roles(id) ON DELETE CASCADE,
+	PRIMARY KEY (vault_id, user_id, role_id)
+);
+-- Folders given for reading or editing (folder access).
 CREATE TABLE IF NOT EXISTS vault_access_rules (
 	id        INTEGER PRIMARY KEY,
 	vault_id  INTEGER NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
-	role_id   INTEGER REFERENCES vault_roles(id) ON DELETE CASCADE, -- a rule of a custom role ...
-	user_id   INTEGER REFERENCES users(id) ON DELETE CASCADE,       -- ... or a member's own exception
+	role_id   INTEGER REFERENCES vault_roles(id) ON DELETE CASCADE, -- given by a role ...
+	user_id   INTEGER REFERENCES users(id) ON DELETE CASCADE,       -- ... or to one member
 	path      TEXT NOT NULL, -- folder or file; '' = the whole vault
 	path_fold TEXT NOT NULL,
-	level     TEXT NOT NULL  -- none, read or write
+	level     TEXT NOT NULL  -- read or write
 );
 CREATE INDEX IF NOT EXISTS vault_access_rules_vault ON vault_access_rules(vault_id);
 CREATE TABLE IF NOT EXISTS settings (
@@ -160,12 +167,16 @@ func Open(path string) (*Store, error) {
 		{"devices", "vault_id", "INTEGER REFERENCES vaults(id) ON DELETE SET NULL"},
 		{"vaults", "folder_access", "INTEGER NOT NULL DEFAULT 0"},
 		{"vaults", "access_rev", "INTEGER NOT NULL DEFAULT 0"},
-		{"vault_members", "role_id", "INTEGER REFERENCES vault_roles(id) ON DELETE SET NULL"},
+		{"vault_members", "role_id", "INTEGER REFERENCES vault_roles(id) ON DELETE SET NULL"}, // 0.8.0's single role
 	} {
 		if err := addColumn(db, c.table, c.col, c.def); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("migrate: %w", err)
 		}
+	}
+	if err := migrateFolderAccess(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return &Store{db: db, Now: time.Now}, nil
 }

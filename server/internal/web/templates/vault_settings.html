@@ -41,7 +41,7 @@
     {{if $v.FolderAccess}}<span class="badge good"><span class="dot on"></span>{{$.T "access.on"}}</span>{{else}}<span class="badge">{{$.T "access.off"}}</span>{{end}}
   </div>
   <p class="muted">{{$.T "access.intro"}}</p>
-  <label class="check"><input type="checkbox" name="folder_access" value="1" {{if $v.FolderAccess}}checked data-confirm-off="{{$.T "access.offConfirm"}}"{{end}}> {{$.T "access.enable"}}</label>
+  <label class="check"><input type="checkbox" name="folder_access" value="1" {{if $v.FolderAccess}}checked data-confirm-off="{{$.T "access.offConfirm"}}"{{else}}data-confirm-on="{{$.T "access.onConfirm"}}"{{end}}> {{$.T "access.enable"}}</label>
   {{if $v.FolderAccess}}<p class="muted">{{$.T "access.offHint"}} <a href="/vaults/{{$v.ID}}/roles">{{$.T "access.manage"}}</a></p>{{end}}
   <button class="primary">{{$.T "action.save"}}</button>
 </form>

@@ -1,5 +1,12 @@
 # Přístup členů k jednotlivým složkám vaultu
 
+> **Nahrazeno ve verzi 0.9.0.** Model pravidel s „Bez přístupu“, základem role
+> a „nejkonkrétnější vyhrává“ byl pro uživatele nepřehledný. Od 0.9.0 platí:
+> po zapnutí člen (kromě vlastníků) nevidí nic; role je seznam složek
+> (Čtení / Úpravy); člen může mít víc rolí a k tomu složky navíc; vidí součet
+> všeho a Úpravy mají přednost před Čtením. Vynucování (`store.Scoped`) zůstalo.
+> Data z 0.8.0 převádí `migrateFolderAccess` v `server/internal/store/access.go`.
+
 ## Kontext
 
 SimpleSync dnes řídí přístup jen na úrovni celého vaultu: člen má jednu roli

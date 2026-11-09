@@ -12,3 +12,7 @@ document.addEventListener("submit", (e) => {
   const box = e.target.querySelector("input[data-confirm-off]");
   if (box && !box.checked && !confirm(box.dataset.confirmOff)) e.preventDefault();
 });
+document.addEventListener("submit", (e) => {
+  const box = e.target.querySelector("input[data-confirm-on]");
+  if (box && box.checked && !confirm(box.dataset.confirmOn)) e.preventDefault();
+});

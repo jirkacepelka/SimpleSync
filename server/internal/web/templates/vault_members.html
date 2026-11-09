@@ -13,9 +13,8 @@
       <form method="post" action="/vaults/{{$v.ID}}/members" class="inline">
         <input type="hidden" name="_csrf" value="{{$.CSRF}}"><input type="hidden" name="user_id" value="{{.UserID}}">
         <select name="role" data-autosubmit>
-          {{$r := .Role}}{{$rid := .RoleID}}
-          {{range $role := (list3 "owner" "editor" "viewer")}}<option value="{{$role}}" {{if and (eq $role $r) (eq $rid 0)}}selected{{end}}>{{$.RoleName $role}}</option>{{end}}
-          {{if $v.FolderAccess}}{{range $roles}}<option value="r:{{.ID}}" {{if eq .ID $rid}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}
+          {{$r := .Role}}
+          {{range $role := (list3 "owner" "editor" "viewer")}}<option value="{{$role}}" {{if eq $role $r}}selected{{end}}>{{$.RoleName $role}}</option>{{end}}
         </select>
         <noscript><button class="small">{{$.T "action.save"}}</button></noscript>
       </form>
@@ -25,11 +24,19 @@
     </td>
   </tr>
   {{if and $v.FolderAccess (ne .Role "owner")}}
+  {{$m := .}}
   <tr class="sub">
     <td colspan="3">
-      <details {{if .Exceptions}}open{{end}}>
-        <summary>{{$.T "access.exceptions"}} ({{len .Exceptions}})</summary>
-        {{template "accessrules" (dict "P" $ "Rules" .Exceptions "User" .UserID)}}
+      {{if and (not .RoleIDs) (not .Folders)}}<p class="sees-nothing"><span class="badge bad">{{$.T "access.seesNothing"}}</span> {{$.T "access.seesNothingHint"}}</p>{{end}}
+      <form method="post" action="/vaults/{{$v.ID}}/members/{{.UserID}}/roles" class="inline-form role-picks">
+        <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+        <span class="muted">{{$.T "access.roles"}}:</span>
+        {{range $roles}}<label class="check"><input type="checkbox" name="role_id" value="{{.ID}}" {{if $m.HasRole .ID}}checked{{end}}> {{.Name}}</label>{{else}}<a href="/vaults/{{$v.ID}}/roles">{{$.T "access.createRole"}}</a>{{end}}
+        {{if $roles}}<button class="small">{{$.T "action.save"}}</button>{{end}}
+      </form>
+      <details {{if .Folders}}open{{end}}>
+        <summary>{{$.T "access.extraFolders"}} ({{len .Folders}})</summary>
+        {{template "accessrules" (dict "P" $ "Rules" .Folders "User" .UserID)}}
       </details>
     </td>
   </tr>
@@ -51,7 +58,6 @@
     <option value="editor">{{$.RoleName "editor"}}</option>
     <option value="viewer">{{$.RoleName "viewer"}}</option>
     <option value="owner">{{$.RoleName "owner"}}</option>
-    {{if $v.FolderAccess}}{{range $roles}}<option value="r:{{.ID}}">{{.Name}}</option>{{end}}{{end}}
   </select>
   <button class="primary">{{$.T "action.add"}}</button>
 </form>
