@@ -2,6 +2,12 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
+## 0.9.0
+
+- **Folder access is simpler**: with it switched on, members who are not owners now see nothing until they are given folders. A role is just a list of folders, each for *Read* or *Edit* (e.g. *Education*: `Education` → Edit). Members can have **several roles**, ticked on the *Members* tab, plus **folders of their own**. A member sees everything given to them; Edit beats Read. No more hiding rules, base roles or "most specific rule wins". Members who were given nothing are marked *sees nothing*.
+- Upgrading converts the rules of 0.8.0 without anyone losing access: allowing rules become folders, and whoever saw the whole vault apart from hidden folders is given the whole vault. Hiding rules are dropped.
+- The Obsidian plugin is unchanged; 0.8.0 and newer work with this server.
+
 ## 0.8.0
 
 - **Folder access**: vault owners can limit members to parts of a vault. Switch it on in the vault's *Settings*, then create custom roles on the new *Roles* tab and add exceptions to single members: per folder *No access*, *Read only* or *Read and edit*. Hidden files disappear for that member everywhere (Obsidian, web editor, history, trash, ZIP, search, AI agents) and writes outside the allowed folders are refused. Off by default; nothing changes until it is switched on.
