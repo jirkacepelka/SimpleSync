@@ -2,7 +2,7 @@
 
 Each `## <version>` section below becomes the description of that GitHub release.
 
-## Unreleased
+## 0.7.0
 
 - **Choose which plugins to sync**: with *Also sync Obsidian settings* on, a new *Choose…* button lets you turn syncing off per plugin (for plugins with device-specific settings).
 
