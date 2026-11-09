@@ -14,6 +14,8 @@ export interface Settings {
 	vaultId: number | null;
 	vaultName: string;
 	syncConfig: boolean;
+	/** Plugin folders (under .obsidian/plugins) left out of the settings sync. */
+	excludedPlugins: string[];
 	/** "auto" (follow Obsidian) or a language code. */
 	language: string;
 	/**
@@ -32,6 +34,7 @@ const DEFAULTS: Settings = {
 	vaultId: null,
 	vaultName: "",
 	syncConfig: false,
+	excludedPlugins: [],
 	language: "auto",
 	loginPrompt: false,
 	pendingVaultId: null,
@@ -157,7 +160,7 @@ export default class SimpleSyncPlugin extends Plugin {
 			client: this.client(),
 			state,
 			saveState: (s) => this.saveState(s),
-			ignore: makeIgnore({ configDir: this.app.vault.configDir, syncConfig: this.settings.syncConfig, pluginId: this.manifest.id }),
+			ignore: makeIgnore({ configDir: this.app.vault.configDir, syncConfig: this.settings.syncConfig, excludedPlugins: this.settings.excludedPlugins, pluginId: this.manifest.id }),
 			author: this.settings.username,
 			log: (m) => console.debug("[SimpleSync]", m),
 			onConflict: (path, copy) => new Notice(t("notice.conflict", { path, copy }), 15000),
