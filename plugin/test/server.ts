@@ -53,3 +53,39 @@ export const fetchHttp: Http = async (req) => {
 	}
 	return { status: res.status, json, arrayBuffer: buf };
 };
+
+/** A logged-in session of the web admin, for setting up users and rules in tests. */
+export class WebAdmin {
+	private cookie = "";
+	private csrf = "";
+	constructor(private url: string) {}
+
+	async login(username: string, password: string) {
+		const res = await fetch(this.url + "/login", {
+			method: "POST",
+			body: new URLSearchParams({ username, password, next: "/" }),
+			redirect: "manual",
+		});
+		this.cookie = (res.headers.get("set-cookie") ?? "").split(";")[0];
+		const page = await (await fetch(this.url + "/", { headers: { Cookie: this.cookie } })).text();
+		this.csrf = /name="_csrf" value="([^"]+)"/.exec(page)?.[1] ?? "";
+		if (!this.cookie || !this.csrf) throw new Error("web login failed");
+		return this;
+	}
+
+	async get(path: string): Promise<string> {
+		return (await fetch(this.url + path, { headers: { Cookie: this.cookie } })).text();
+	}
+
+	/** Submits a form; fails when the server answers with an error message. */
+	async post(path: string, form: Record<string, string>) {
+		const res = await fetch(this.url + path, {
+			method: "POST",
+			headers: { Cookie: this.cookie },
+			body: new URLSearchParams({ ...form, _csrf: this.csrf }),
+			redirect: "manual",
+		});
+		const where = res.headers.get("location") ?? "";
+		if (res.status !== 303 || where.includes("err=")) throw new Error(`POST ${path}: ${res.status} ${decodeURIComponent(where)}`);
+	}
+}

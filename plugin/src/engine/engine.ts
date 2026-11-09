@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { Access } from "./access";
 import { ApiError, Client } from "./client";
 import { sha256 } from "./hash";
 import { isMergeable, mergeText } from "./merge";
@@ -34,6 +35,10 @@ export interface SyncResult {
 	problems: string[];
 	/** Local files moved to the trash while taking over the server state. */
 	trashed: number;
+	/** Files moved to the trash because the member may no longer see them. */
+	hidden: number;
+	/** Local changes not uploaded because the folder is read-only (or hidden) for this member. */
+	notAllowed: number;
 }
 
 /** Thrown instead of deleting a large part of the vault on the server. */
@@ -93,7 +98,7 @@ export class SyncEngine {
 	}
 
 	async sync(): Promise<SyncResult> {
-		const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, readOnly: false, problems: [], trashed: 0 };
+		const result: SyncResult = { pulled: 0, pushed: 0, conflicts: 0, readOnly: false, problems: [], trashed: 0, hidden: 0, notAllowed: 0 };
 		// Pushing can race with another device; a rejected commit is resolved
 		// by pulling again, so a few rounds may be needed.
 		try {
@@ -145,6 +150,8 @@ export class SyncEngine {
 
 		// ---- pull ----
 		let since = this.o.state.lastRev;
+		let access = new Access("editor");
+		let accessChecked = false;
 		for (;;) {
 			const page = await this.o.client.changes(this.o.state.vaultId, since);
 			if (page.head < since) {
@@ -153,6 +160,22 @@ export class SyncEngine {
 				continue;
 			}
 			result.readOnly = page.role === "viewer";
+			if (!accessChecked) {
+				accessChecked = true;
+				access = new Access(page.role, page.access?.rules);
+				const rev = page.access?.rev ?? 0;
+				if ((this.o.state.accessRev ?? 0) !== rev) {
+					// Folder access changed: drop what is no longer visible and
+					// read the whole change list again for what became visible.
+					await this.dropHidden(access, local, result);
+					this.o.state.accessRev = rev;
+					await this.o.saveState(this.o.state);
+					if (since > 0) {
+						since = 0;
+						continue;
+					}
+				}
+			}
 			for (const r of page.changes) {
 				if (this.o.ignore(r.path) || !safePath(r.path)) continue;
 				if (await this.applyRemote(r, local, result)) result.pulled++;
@@ -177,20 +200,31 @@ export class SyncEngine {
 		if (result.readOnly) return false;
 
 		// ---- push ----
+		// Changes in folders this member may not write stay on this device.
+		let notAllowed = 0;
 		const ops: { op: CommitOp; file?: LocalFile }[] = [];
 		for (const [key, f] of local) {
 			const b = base[key];
 			if (!b || b.hash !== f.hash) {
+				if (!access.canWrite(key)) {
+					notAllowed++;
+					continue;
+				}
 				ops.push({ op: { path: key, hash: f.hash, size: f.size, mtime: f.mtime, deleted: false, base_hash: b?.hash ?? "" }, file: f });
 			}
 		}
 		let deletes = 0;
 		for (const key of Object.keys(base)) {
 			if (!local.has(key) && !unreadable.has(key) && !this.o.ignore(key)) {
+				if (!access.canWrite(key)) {
+					notAllowed++;
+					continue;
+				}
 				ops.push({ op: { path: key, hash: "", size: 0, mtime: Date.now(), deleted: true, base_hash: base[key].hash } });
 				deletes++;
 			}
 		}
+		result.notAllowed = notAllowed;
 		if (!ops.length) return false;
 		const known = Object.keys(base).length;
 		if (deletes > 20 && deletes > known / 2 && !this.allowMassDelete) throw new MassDeleteError(deletes);
@@ -234,6 +268,9 @@ export class SyncEngine {
 					else base[r.path] = { hash: o.op.hash, size: o.file!.size, mtime: o.file!.mtime };
 				} else if (r.error === "conflict" || r.error === "missing_blob") {
 					again = true;
+				} else if (r.error === "forbidden") {
+					// Access changed while syncing; the next sync knows the new rules.
+					result.notAllowed++;
 				} else if (r.error === "case_conflict") {
 					result.problems.push(t("problem.case", { path: r.path, other: r.current?.path ?? "" }));
 				} else {
@@ -243,6 +280,24 @@ export class SyncEngine {
 			await this.o.saveState(this.o.state);
 		}
 		return again;
+	}
+
+	/**
+	 * Removes what the member may no longer see: unchanged files go to the
+	 * local trash, files edited here are kept but no longer synced.
+	 */
+	private async dropHidden(access: Access, local: Map<string, LocalFile>, result: SyncResult): Promise<void> {
+		const base = this.o.state.base;
+		for (const key of Object.keys(base)) {
+			if (access.canRead(key)) continue;
+			const l = local.get(key);
+			if (l && l.hash === base[key].hash) {
+				await this.o.fs.trash(l.path);
+				local.delete(key);
+				result.hidden++;
+			}
+			delete base[key];
+		}
 	}
 
 	private async download(hash: string): Promise<ArrayBuffer> {

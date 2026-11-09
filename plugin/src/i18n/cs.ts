@@ -7,6 +7,7 @@ export const cs: Dict = {
 	"status.syncing": "Synchronizuji…",
 	"status.synced": "Synchronizováno",
 	"status.syncedReadOnly": "Synchronizováno (jen čtení)",
+	"status.syncedNotAllowed": "Synchronizováno ({count} lokálních změn neodesláno: složka jen pro čtení)",
 	"status.expired": "Přihlášení vypršelo – přihlas se znovu",
 	"status.vaultGone": "Vault už na serveru neexistuje nebo k němu nemáš přístup",
 	"status.offline": "Server nedostupný, zkusím později",
@@ -19,6 +20,7 @@ export const cs: Dict = {
 	"notice.conflict": "SimpleSync: konflikt v „{path}“.\nTvoje verze je uložena jako „{copy}“.",
 	"notice.expired": "SimpleSync: přihlášení vypršelo nebo bylo zařízení odhlášeno. Přihlas se znovu v nastavení.",
 	"notice.replaced": "SimpleSync: vault teď odpovídá serveru. {count} lokálních souborů bylo přesunuto do koše Obsidianu (.trash).",
+	"notice.accessRemoved": "SimpleSync: k některým složkám už nemáš přístup. {count} souborů bylo přesunuto do koše Obsidianu (.trash).",
 
 	"massDelete.title": "SimpleSync: smazat soubory na serveru?",
 	"massDelete.body": "V tomto zařízení chybí {count} souborů, které jsou na serveru. Pokud jsi je smazal(a) záměrně, smaž je i na serveru. Pokud ne, stáhni je zpět.",

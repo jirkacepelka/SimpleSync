@@ -1,4 +1,5 @@
 import { hasText, t } from "../i18n";
+import type { VaultAccess } from "./access";
 import type { CommitOp, Http, HttpResponse, OpResult, RemoteEntry } from "./types";
 
 export class ApiError extends Error {
@@ -25,6 +26,8 @@ export interface ChangesPage {
 	head: number;
 	more: boolean;
 	role: string;
+	/** Folder access of this member (missing on servers older than 0.8.0). */
+	access?: VaultAccess;
 }
 
 /**
