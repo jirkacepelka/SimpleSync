@@ -26,7 +26,7 @@ export interface ChangesPage {
 	head: number;
 	more: boolean;
 	role: string;
-	/** Folder access of this member (missing on servers older than 0.8.0). */
+	/** Folder access of this member (missing on older servers). */
 	access?: VaultAccess;
 }
 

@@ -379,3 +379,4 @@ table.rules td { padding-top: 6px; padding-bottom: 6px; }
 tr.sub > td { border-top: 0; padding-top: 0; }
 tr.sub details > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
 tr.sub details[open] { padding-bottom: 8px; }
+.inline-form input[list="vault-folders"] { flex: 1 1 20rem; min-width: 0; }

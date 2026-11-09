@@ -160,14 +160,30 @@ A token (or a Claude connection) belongs to one user and never gets more than th
 | → Files | browse folders, preview notes and images, **version history** with restore, download the whole vault as ZIP |
 | → Trash | deleted files and restoring them |
 | → Backups | list of backups, **Back up now**, ZIP download, restore a single file or the **whole vault** |
-| → Members | share the vault with other users: *Owner* / *Editor* / *Read only* |
-| → Settings | rename, change the backup plan, **publishing**, delete the vault |
+| → Members | share the vault with other users: *Owner* / *Editor* / *Read only*, or a custom role; folder exceptions per member |
+| → Roles | custom roles with **folder access** rules (only when folder access is on, see below) |
+| → Settings | rename, change the backup plan, **publishing**, **folder access**, delete the vault |
 | **Users** | create accounts, reset passwords, administrators |
 | **Devices** | every Obsidian login; logging a device out removes its access immediately |
 | **AI agents** | tokens and Claude connections for the MCP endpoint (see above) |
 | **Settings** | how long to keep version history, maximum file size, whether users may create vaults |
 
 The language picker is at the bottom of every page.
+
+### Folder access
+
+By default a member sees the whole vault. When some people should see only part of it, the vault owner switches on **Folder access** in the vault's *Settings*. It is off by default and changes nothing until switched on; switching it off again makes the whole vault visible to every member (roles and rules are kept for later).
+
+With folder access on:
+
+- On the new **Roles** tab, create custom roles (e.g. *Campaign team*). A role is based on *Editor* or *Read only* and has rules: *folder → No access / Read only / Read and edit*. Give members a custom role on the *Members* tab.
+- Under each member on the *Members* tab you can add **exceptions**: rules just for that person, on top of their role.
+- A rule covers the folder and everything in it. **The most specific rule wins**, so a common setup is `/ → No access` (hide the whole vault) followed by the folders the role may use, e.g. `Program 2029 → Read only` and `Program 2029/Campaign → Read and edit`. On the same folder a member's exception beats the role's rule.
+- A rule never allows more than the role's base: a *Read only* role cannot edit anywhere. Owners and administrators always see everything.
+
+The server enforces this everywhere: hidden files do not exist for that member in Obsidian, the web editor, file history, trash, ZIP downloads, links, search or AI agents, and changes outside the allowed folders are refused. Members limited by any rule do not see **Backups**, because a backup is a snapshot of the whole vault. When access to a folder is taken away, the Obsidian plugin moves its files to the Obsidian trash (files the member had edited are kept, but no longer synced); when access is given, the folder arrives with the next sync. Edits in a read-only folder stay on that device and the status bar says how many were not uploaded.
+
+Rules point at paths. Renaming a folder in the web editor moves its rules with it, but a rename in Obsidian does not (the server only sees files being deleted and created), so the *Roles* tab marks rules whose folder no longer exists. Hidden folders like `.obsidian` are covered by `/` too: with `/ → No access`, add `.obsidian → Read only` if those members should get the shared Obsidian settings. Members need the Obsidian plugin from the same release or newer; older plugins keep syncing what they may see but do not notice access changes.
 
 ### Backups
 
