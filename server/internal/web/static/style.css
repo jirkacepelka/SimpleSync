@@ -370,3 +370,12 @@ dialog.ed-dialog .actions { justify-content: flex-end; }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 h2.flush { margin: 0; }
+
+/* Folder access rules */
+.right { text-align: right; }
+form.right { display: flex; justify-content: flex-end; margin-top: 10px; }
+table.rules { margin: 6px 0 10px; }
+table.rules td { padding-top: 6px; padding-bottom: 6px; }
+tr.sub > td { border-top: 0; padding-top: 0; }
+tr.sub details > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+tr.sub details[open] { padding-bottom: 8px; }

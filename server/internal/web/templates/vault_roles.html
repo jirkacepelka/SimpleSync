@@ -1,0 +1,40 @@
+{{define "content"}}
+{{template "vaultnav" .}}
+{{template "folderlist" .}}
+{{$v := .Vault}}
+<p class="muted">{{$.T "roles.intro"}}</p>
+{{range index .D "Roles"}}
+{{$r := .}}
+<section class="card" id="role-{{.ID}}">
+  <form method="post" action="/vaults/{{$v.ID}}/roles/{{.ID}}" class="inline-form">
+    <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+    <input name="name" value="{{.Name}}" required maxlength="60" aria-label="{{$.T "roles.name"}}">
+    <select name="base" aria-label="{{$.T "roles.base"}}">
+      <option value="editor" {{if eq .Base "editor"}}selected{{end}}>{{$.T "roles.baseEditor"}}</option>
+      <option value="viewer" {{if eq .Base "viewer"}}selected{{end}}>{{$.T "roles.baseViewer"}}</option>
+    </select>
+    <button class="small">{{$.T "action.save"}}</button>
+    <span class="muted">{{$.T "roles.members" .Members}}</span>
+  </form>
+  <h3>{{$.T "access.rules"}}</h3>
+  {{template "accessrules" (dict "P" $ "Rules" .Rules "Role" .ID)}}
+  <form method="post" action="/vaults/{{$v.ID}}/roles/{{.ID}}/delete" class="right" data-confirm="{{$.T "roles.deleteConfirm" .Name}}">
+    <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+    <button class="small danger">{{$.T "roles.delete"}}</button>
+  </form>
+</section>
+{{else}}
+<p class="card muted">{{$.T "roles.none"}}</p>
+{{end}}
+<form method="post" action="/vaults/{{$v.ID}}/roles" class="card inline-form">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <h3>{{$.T "roles.add"}}</h3>
+  <input name="name" required maxlength="60" placeholder="{{$.T "roles.namePlaceholder"}}">
+  <select name="base">
+    <option value="editor">{{$.T "roles.baseEditor"}}</option>
+    <option value="viewer">{{$.T "roles.baseViewer"}}</option>
+  </select>
+  <button class="primary">{{$.T "action.add"}}</button>
+</form>
+<p class="muted">{{$.T "access.howItWorks"}}</p>
+{{end}}

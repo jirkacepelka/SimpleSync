@@ -58,6 +58,7 @@ type page struct {
 	Version string
 	Vault   *store.Vault
 	Role    string
+	Scope   *store.Scoped // the vault's files as this user may see them
 	Tab     string
 	Lang    string
 	Path    string // current URL, for the language switcher
@@ -104,14 +105,14 @@ func (w *Web) Register(mux *http.ServeMux) error {
 	mux.HandleFunc("GET /vaults/{id}/zip", w.vault(store.RoleViewer, w.vaultZip))
 	mux.HandleFunc("GET /vaults/{id}/obsidian.zip", w.vault(store.RoleViewer, w.obsidianVaultZip))
 
-	mux.HandleFunc("GET /vaults/{id}/backups", w.vault(store.RoleViewer, w.backups))
-	mux.HandleFunc("POST /vaults/{id}/backups", w.vault(store.RoleEditor, w.backupCreate))
-	mux.HandleFunc("GET /vaults/{id}/backups/{bid}", w.vault(store.RoleViewer, w.backupView))
-	mux.HandleFunc("GET /vaults/{id}/backups/{bid}/zip", w.vault(store.RoleViewer, w.backupZip))
-	mux.HandleFunc("GET /vaults/{id}/backups/{bid}/raw", w.vault(store.RoleViewer, w.backupRaw))
-	mux.HandleFunc("POST /vaults/{id}/backups/{bid}/restore", w.vault(store.RoleOwner, w.backupRestore))
-	mux.HandleFunc("POST /vaults/{id}/backups/{bid}/restore-file", w.vault(store.RoleEditor, w.backupRestoreFile))
-	mux.HandleFunc("POST /vaults/{id}/backups/{bid}/delete", w.vault(store.RoleOwner, w.backupDelete))
+	mux.HandleFunc("GET /vaults/{id}/backups", w.unlimited(store.RoleViewer, w.backups))
+	mux.HandleFunc("POST /vaults/{id}/backups", w.unlimited(store.RoleEditor, w.backupCreate))
+	mux.HandleFunc("GET /vaults/{id}/backups/{bid}", w.unlimited(store.RoleViewer, w.backupView))
+	mux.HandleFunc("GET /vaults/{id}/backups/{bid}/zip", w.unlimited(store.RoleViewer, w.backupZip))
+	mux.HandleFunc("GET /vaults/{id}/backups/{bid}/raw", w.unlimited(store.RoleViewer, w.backupRaw))
+	mux.HandleFunc("POST /vaults/{id}/backups/{bid}/restore", w.unlimited(store.RoleOwner, w.backupRestore))
+	mux.HandleFunc("POST /vaults/{id}/backups/{bid}/restore-file", w.unlimited(store.RoleEditor, w.backupRestoreFile))
+	mux.HandleFunc("POST /vaults/{id}/backups/{bid}/delete", w.unlimited(store.RoleOwner, w.backupDelete))
 
 	mux.HandleFunc("GET /vaults/{id}/members", w.vault(store.RoleOwner, w.members))
 	mux.HandleFunc("POST /vaults/{id}/members", w.vault(store.RoleOwner, w.memberSet))
@@ -119,6 +120,13 @@ func (w *Web) Register(mux *http.ServeMux) error {
 	mux.HandleFunc("GET /vaults/{id}/settings", w.vault(store.RoleOwner, w.vaultSettings))
 	mux.HandleFunc("POST /vaults/{id}/settings", w.vault(store.RoleOwner, w.vaultSettingsSave))
 	mux.HandleFunc("POST /vaults/{id}/delete", w.vault(store.RoleOwner, w.vaultDelete))
+	mux.HandleFunc("POST /vaults/{id}/folder-access", w.vault(store.RoleOwner, w.folderAccessSave))
+	mux.HandleFunc("GET /vaults/{id}/roles", w.vault(store.RoleOwner, w.roles))
+	mux.HandleFunc("POST /vaults/{id}/roles", w.vault(store.RoleOwner, w.roleCreate))
+	mux.HandleFunc("POST /vaults/{id}/roles/{rid}", w.vault(store.RoleOwner, w.roleUpdate))
+	mux.HandleFunc("POST /vaults/{id}/roles/{rid}/delete", w.vault(store.RoleOwner, w.roleDelete))
+	mux.HandleFunc("POST /vaults/{id}/rules", w.vault(store.RoleOwner, w.ruleSet))
+	mux.HandleFunc("POST /vaults/{id}/rules/{ruleid}/delete", w.vault(store.RoleOwner, w.ruleDelete))
 
 	mux.HandleFunc("GET /users", w.admin(w.users))
 	mux.HandleFunc("POST /users", w.admin(w.userCreate))
@@ -151,6 +159,7 @@ var funcs = template.FuncMap{
 	"retentions": func() []int { return store.BackupRetentions },
 	"languages":  func() []i18n.Language { return i18n.Languages },
 	"list3":      func(a, b, c string) []string { return []string{a, b, c} },
+	"levels":     func() []string { return []string{store.LevelNone, store.LevelRead, store.LevelWrite} },
 	"base":       path.Base,
 	"q":          url.QueryEscape,
 	// dict builds a map for passing several values to a sub-template.
@@ -395,11 +404,12 @@ func (w *Web) admin(h handler) http.HandlerFunc {
 func (w *Web) vault(minRole string, h handler) http.HandlerFunc {
 	return w.user(func(rw http.ResponseWriter, r *http.Request, p *page) {
 		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		role, err := w.Store.Role(r.Context(), p.User, id)
-		if err != nil || role == "" {
+		acc, err := w.Store.Access(r.Context(), p.User, id)
+		if err != nil || acc == nil {
 			w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.vaultNotFound"))
 			return
 		}
+		role := acc.Role
 		if !store.RoleAtLeast(role, minRole) {
 			w.fail(rw, r, http.StatusForbidden, w.tr(r, "msg.forbidden"))
 			return
@@ -410,9 +420,26 @@ func (w *Web) vault(minRole string, h handler) http.HandlerFunc {
 			return
 		}
 		p.Vault, p.Role, p.Nav = v, role, "vaults"
+		p.Scope = w.Store.Scope(v.ID, acc)
 		h(rw, r, p)
 	})
 }
+
+// unlimited is like vault, but only for members who see the whole vault:
+// backups are snapshots of everything, so members limited to some folders
+// do not get them.
+func (w *Web) unlimited(minRole string, h handler) http.HandlerFunc {
+	return w.vault(minRole, func(rw http.ResponseWriter, r *http.Request, p *page) {
+		if p.Scope.A.Restricted() {
+			w.fail(rw, r, http.StatusForbidden, w.tr(r, "msg.forbidden"))
+			return
+		}
+		h(rw, r, p)
+	})
+}
+
+// Restricted reports whether folder rules limit the current user in the vault.
+func (p *page) Restricted() bool { return p.Scope != nil && p.Scope.A.Restricted() }
 
 func formInt(r *http.Request, key string) int64 {
 	n, _ := strconv.ParseInt(r.FormValue(key), 10, 64)

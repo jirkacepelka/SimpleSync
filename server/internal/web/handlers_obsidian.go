@@ -61,7 +61,7 @@ func (w *Web) obsidianVaultZip(rw http.ResponseWriter, r *http.Request, p *page)
 		http.NotFound(rw, r)
 		return
 	}
-	files, err := w.Store.ListFiles(r.Context(), p.Vault.ID, false)
+	files, err := p.Scope.ListFiles(r.Context(), false)
 	if err != nil {
 		w.fail(rw, r, 500, err.Error())
 		return

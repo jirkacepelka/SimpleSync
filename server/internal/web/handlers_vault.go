@@ -123,7 +123,7 @@ type dirEntry struct {
 func (w *Web) vaultFiles(rw http.ResponseWriter, r *http.Request, p *page) {
 	p.Title, p.Tab = p.Vault.Name, "files"
 	dir := strings.Trim(r.URL.Query().Get("dir"), "/")
-	files, err := w.Store.ListFiles(r.Context(), p.Vault.ID, false)
+	files, err := p.Scope.ListFiles(r.Context(), false)
 	if err != nil {
 		w.fail(rw, r, 500, err.Error())
 		return
@@ -207,7 +207,7 @@ func (w *Web) readText(hash string, name string) (string, bool) {
 func (w *Web) fileHistory(rw http.ResponseWriter, r *http.Request, p *page) {
 	fp := r.URL.Query().Get("path")
 	p.Title, p.Tab = path.Base(fp), "files"
-	versions, err := w.Store.Versions(r.Context(), p.Vault.ID, fp)
+	versions, err := p.Scope.Versions(r.Context(), fp)
 	if err != nil || len(versions) == 0 {
 		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return
@@ -268,7 +268,7 @@ func (w *Web) serveBlob(rw http.ResponseWriter, r *http.Request, hash, name stri
 }
 
 func (w *Web) versionRaw(rw http.ResponseWriter, r *http.Request, p *page) {
-	v, err := w.Store.Version(r.Context(), p.Vault.ID, formIntPath(r, "vid"))
+	v, err := p.Scope.Version(r.Context(), formIntPath(r, "vid"))
 	if err != nil || v.Deleted {
 		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return
@@ -281,11 +281,14 @@ func (w *Web) webAuthor(p *page) store.Author {
 }
 
 func (w *Web) commitForce(r *http.Request, p *page, e store.FileEntry) error {
-	res, head, err := w.Store.Commit(r.Context(), p.Vault.ID, []store.Op{store.ForceOp(e)}, w.webAuthor(p), w.Blobs.Has)
+	res, head, err := p.Scope.Commit(r.Context(), []store.Op{store.ForceOp(e)}, w.webAuthor(p), w.Blobs.Has)
 	if err != nil {
 		return err
 	}
 	if !res[0].OK {
+		if res[0].Error == store.ErrCodeForbidden {
+			return errors.New(w.tr(r, "editor.forbidden"))
+		}
 		if res[0].Error == store.ErrCodeCaseConflict {
 			return errors.New(w.tr(r, "msg.caseConflict", res[0].Current.Path))
 		}
@@ -296,7 +299,7 @@ func (w *Web) commitForce(r *http.Request, p *page, e store.FileEntry) error {
 }
 
 func (w *Web) versionRestore(rw http.ResponseWriter, r *http.Request, p *page) {
-	v, err := w.Store.Version(r.Context(), p.Vault.ID, formIntPath(r, "vid"))
+	v, err := p.Scope.Version(r.Context(), formIntPath(r, "vid"))
 	if err != nil || v.Deleted {
 		w.fail(rw, r, http.StatusNotFound, w.tr(r, "msg.fileNotFound"))
 		return
@@ -311,7 +314,7 @@ func (w *Web) versionRestore(rw http.ResponseWriter, r *http.Request, p *page) {
 
 func (w *Web) trash(rw http.ResponseWriter, r *http.Request, p *page) {
 	p.Title, p.Tab = p.Vault.Name+" – "+w.tr(r, "tab.trash"), "trash"
-	files, err := w.Store.ListFiles(r.Context(), p.Vault.ID, true)
+	files, err := p.Scope.ListFiles(r.Context(), true)
 	if err != nil {
 		w.fail(rw, r, 500, err.Error())
 		return
@@ -321,7 +324,7 @@ func (w *Web) trash(rw http.ResponseWriter, r *http.Request, p *page) {
 }
 
 func (w *Web) vaultZip(rw http.ResponseWriter, r *http.Request, p *page) {
-	files, err := w.Store.ListFiles(r.Context(), p.Vault.ID, false)
+	files, err := p.Scope.ListFiles(r.Context(), false)
 	if err != nil {
 		w.fail(rw, r, 500, err.Error())
 		return
@@ -348,6 +351,15 @@ func (w *Web) members(rw http.ResponseWriter, r *http.Request, p *page) {
 		d["Users"] = users
 	}
 	p.D = d
+	if p.Vault.FolderAccess {
+		roles, _ := w.Store.VaultRoles(r.Context(), p.Vault.ID)
+		d["Roles"] = roles
+		var rules []store.AccessRule
+		for _, m := range members {
+			rules = append(rules, m.Exceptions...)
+		}
+		w.accessPageData(r, p, rules)
+	}
 	w.render(rw, r, "vault_members", p)
 }
 
@@ -364,10 +376,11 @@ func (w *Web) memberSet(rw http.ResponseWriter, r *http.Request, p *page) {
 		redirect(rw, r, back, "", w.tr(r, "msg.userNotFound"))
 		return
 	}
-	if err := w.Store.SetMember(r.Context(), p.Vault.ID, u.ID, r.FormValue("role")); err != nil {
+	if err := w.setMemberRole(r, p, u.ID, r.FormValue("role")); err != nil {
 		redirect(rw, r, back, "", w.errText(r, err))
 		return
 	}
+	w.accessChanged(r, p)
 	redirect(rw, r, back, w.tr(r, "msg.memberAdded", u.Username), "")
 }
 
@@ -379,6 +392,7 @@ func (w *Web) memberRemove(rw http.ResponseWriter, r *http.Request, p *page) {
 		return
 	}
 	w.Store.RemoveMember(r.Context(), p.Vault.ID, uid)
+	w.accessChanged(r, p)
 	redirect(rw, r, back, w.tr(r, "msg.memberRemoved"), "")
 }
 

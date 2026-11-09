@@ -64,6 +64,8 @@
   }
 
   // ---------- helpers ----------
+  // The vault may be editable while a folder in it is read-only for this user.
+  const canEdit = () => cfg.editable && !(note && note.readOnly);
   const isNote = (p) => /\.md$/i.test(p);
   const isText = (p) => /\.(md|txt|canvas|json|css|js|csv|ya?ml|html|xml|svg|base)$/i.test(p);
   const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -250,7 +252,7 @@
   // ---------- opening notes ----------
   function show(what) {
     el.panes.hidden = what !== "text";
-    el.toolbar.hidden = what !== "text" || !cfg.editable;
+    el.toolbar.hidden = what !== "text" || !canEdit();
     el.mode.hidden = what !== "text";
     el.binary.hidden = what !== "binary";
     el.folder.hidden = what !== "folder";
@@ -319,7 +321,7 @@
       return notice(e.message);
     }
     if (!keepNotice) notice("");
-    note = { path: data.path, base: data.hash, binary: !!data.binary };
+    note = { path: data.path, base: data.hash, binary: !!data.binary, readOnly: data.writable === false };
     dirty = false;
     selectedDir = dirOf(data.path);
     for (let d = selectedDir; d; d = dirOf(d)) openDirs.add(d);
@@ -327,7 +329,7 @@
     document.title = `${stem(data.path)} · ${cfg.vaultName || "SimpleSync"}`;
     el.crumb.textContent = dirOf(data.path) ? dirOf(data.path) + " /" : "";
     el.title.value = isNote(data.path) ? stem(data.path) : baseName(data.path);
-    el.title.readOnly = !cfg.editable;
+    el.title.readOnly = !canEdit();
     el.history.href = `${base}/file?path=${encodeURIComponent(data.path)}`;
     if (data.binary) {
       show("binary");
@@ -341,11 +343,11 @@
     }
     show("text");
     el.src.value = data.text;
-    el.src.readOnly = !cfg.editable;
+    el.src.readOnly = !canEdit();
     el.src.classList.toggle("mono", !isNote(data.path));
     el.src.scrollTop = 0;
-    setMode(cfg.editable ? store.get("mode", innerWidth > 1000 ? "split" : "edit") : "read");
-    setStatus(cfg.editable ? "saved" : "readonly");
+    setMode(canEdit() ? store.get("mode", innerWidth > 1000 ? "split" : "edit") : "read");
+    setStatus(canEdit() ? "saved" : "readonly");
     renderPreview(true);
     updatePublish();
     renderTree();
@@ -363,7 +365,7 @@
 
   // ---------- modes & preview ----------
   function setMode(m) {
-    if (!cfg.editable) m = "read";
+    if (!canEdit()) m = "read";
     el.panes.dataset.mode = m;
     for (const b of el.mode.querySelectorAll("button")) b.classList.toggle("on", b.dataset.mode === m);
     if (m !== "edit") renderPreview(true);
@@ -406,7 +408,7 @@
 
   // ---------- saving ----------
   function changed() {
-    if (!note || !cfg.editable) return;
+    if (!note || !canEdit()) return;
     dirty = true;
     setStatus("dirty");
     clearTimeout(saveTimer);
@@ -418,7 +420,7 @@
 
   async function save() {
     clearTimeout(saveTimer);
-    if (!note || !dirty || note.binary || !cfg.editable) return;
+    if (!note || !dirty || note.binary || !canEdit()) return;
     if (saving) {
       again = true;
       return;
@@ -503,7 +505,7 @@
       const f = files.find((x) => x.path === note.path);
       if (!f) {
         notice(t("editor.deletedElsewhere"));
-        if (cfg.editable) dirty = true;
+        if (canEdit()) dirty = true;
         return;
       }
       if (f.hash !== note.base && !dirty && !note.binary) {
@@ -536,7 +538,7 @@
     }
   });
   el.title.addEventListener("change", async () => {
-    if (!note || !cfg.editable) return;
+    if (!note || !canEdit()) return;
     const name = el.title.value.trim().replace(/[\\/]/g, "-");
     const current = isNote(note.path) ? stem(note.path) : baseName(note.path);
     if (!name || name === current) {
@@ -763,7 +765,7 @@
       const { selectionStart: s, value } = el.src;
       const before = value.slice(Math.max(0, s - 120), s);
       const m = before.match(/\[\[([^\]\n|#]*)$/);
-      if (!m || !cfg.editable) return this.close();
+      if (!m || !canEdit()) return this.close();
       const q = m[1].toLowerCase();
       this.start = s - m[1].length;
       this.items = files
@@ -852,7 +854,7 @@
 
   // ---------- images: paste, drop, pick ----------
   async function upload(list) {
-    if (!note || !cfg.editable) return;
+    if (!note || !canEdit()) return;
     const links = [];
     for (const f of list) {
       const form = new FormData();
@@ -912,7 +914,7 @@
   }
   function updatePublish() {
     const usable = note && isNote(note.path) && !note.binary && cfg.publish.enabled;
-    el.pub.hidden = !usable || cfg.publish.mode === "folder" || !cfg.editable;
+    el.pub.hidden = !usable || cfg.publish.mode === "folder" || !canEdit();
     const on = usable && publishedNow();
     el.view.hidden = !on;
     if (on) {
