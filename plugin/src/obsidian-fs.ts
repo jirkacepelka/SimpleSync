@@ -1,6 +1,11 @@
 import { normalizePath, TFile, TFolder, type App } from "obsidian";
 import { FOLDER_MARKER, isFolderMarker, type FileStat, type LocalFS } from "./engine/types";
 
+function parentPath(path: string): string {
+	const slash = path.lastIndexOf("/");
+	return slash < 0 ? "" : path.slice(0, slash);
+}
+
 /** LocalFS backed by the Obsidian vault (works on desktop and mobile). */
 export class ObsidianFS implements LocalFS {
 	constructor(
@@ -60,7 +65,7 @@ export class ObsidianFS implements LocalFS {
 	}
 
 	private async ensureFolder(path: string) {
-		const dir = path.slice(0, path.lastIndexOf("/"));
+		const dir = parentPath(path);
 		if (!dir || (await this.adapter.exists(dir))) return;
 		if (this.hidden(dir)) await this.adapter.mkdir(dir);
 		else await this.app.vault.createFolder(dir).catch(() => this.adapter.mkdir(dir));
@@ -112,7 +117,7 @@ export class ObsidianFS implements LocalFS {
 			await this.adapter.remove(path);
 		}
 		// Remove folders left empty by the deletion.
-		let dir = path.slice(0, path.lastIndexOf("/"));
+		let dir = parentPath(path);
 		while (dir) {
 			const folder = this.app.vault.getAbstractFileByPath(dir);
 			if (folder instanceof TFolder) {
@@ -123,7 +128,7 @@ export class ObsidianFS implements LocalFS {
 				if (res.files.length || res.folders.length) break;
 				await this.adapter.rmdir(dir, false);
 			} else break;
-			dir = dir.slice(0, Math.max(0, dir.lastIndexOf("/")));
+			dir = parentPath(dir);
 		}
 	}
 }
